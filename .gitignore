@@ -1,0 +1,42 @@
+# Local-only notes — never publish
+NOTES.local.md
+*.local.md
+
+# Deps
+node_modules/
+.pnpm-store/
+
+# Build
+.next/
+dist/
+build/
+out/
+*.tsbuildinfo
+
+# Env / secrets
+.env
+.env.*
+!.env.example
+
+# Python (calibration sidecar)
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Test / coverage
+coverage/
+.nyc_output/
+playwright-report/
+test-results/
+
+# Editor / OS
+.DS_Store
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# Local db + probe evidence
+*.sqlite
+/tmp/
+evidence/
