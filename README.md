@@ -2,7 +2,12 @@
 
 **A verifiable record of what you said you'd ship and whether you shipped it.**
 
-**Status: pre-build / design** · `pledge.sh` · Rohan Sharma ([@rohansx](https://github.com/rohansx))
+**Status: v0 built, not yet deployed** · `pledge.sh` · Rohan Sharma ([@rohansx](https://github.com/rohansx))
+
+The loop runs end to end locally: a commitment created through the app is resolved to `kept` by
+a real probe against a real target, with no manual database edits. See
+[`DEVELOPMENT.md`](./DEVELOPMENT.md) to run it, and **Current phase** below for what is and is
+not done.
 
 ---
 
@@ -67,46 +72,63 @@ visibilities). Nothing anywhere should read as if either outcome is settled.
 
 ## Current phase
 
-Pre-build. No code exists. The next milestone is **v0 — prove the loop**
-([`roadmap.md`](./docs/roadmap.md)), and its exit criteria are the definition of done:
+**v0 — prove the loop** ([`roadmap.md`](./docs/roadmap.md)) is built and green locally.
+Nothing is deployed. Its exit criteria are the definition of done:
 
-- A commitment created through the UI resolves to `kept` from a real probe against a real
-  repo, with zero manual DB edits.
-- A test asserts no route handler can write `status IN ('kept','missed')`.
-- `@pledge/safe-fetch` rejects `127.0.0.1`, `169.254.169.254`, `10.0.0.1`, `[::1]`, a DNS
-  name resolving to a private IP, and a redirect chain whose third hop is private.
-- `/[handle]` is server-rendered, 200s to `curl` with JS disabled, Lighthouse SEO ≥ 90.
-- Deadline arithmetic is correct in `Asia/Kolkata`.
-- One commitment on the deployed instance, made by the author, publicly visible.
+| Exit criterion | |
+|---|---|
+| A commitment created through the UI resolves to `kept` from a real probe, zero manual DB edits | met — `pnpm smoke`, against a live target over the real network |
+| A test asserts no route handler can write `status IN ('kept','missed')` | met — `scripts/check-invariants.mjs`, run by both `pnpm build` and `pnpm test` |
+| `@pledge/safe-fetch` rejects `127.0.0.1`, `169.254.169.254`, `10.0.0.1`, `[::1]`, a DNS name resolving private, and a redirect whose third hop is private | met — one test each, plus decimal/octal/IPv4-mapped/NAT64 forms |
+| `/[handle]` is server-rendered, 200s to `curl` with JS disabled, Lighthouse SEO ≥ 90 | SSR half met; **Lighthouse not yet run** — it needs a deployed instance |
+| Deadline arithmetic is correct in `Asia/Kolkata` | met — explicit tests at 23:30 and 00:15 IST across a UTC date boundary |
+| One commitment on the deployed instance, made by the author, publicly visible | **not met** — there is no deployed instance yet |
+
+The two open criteria are both blocked on deployment, not on code. Real GitHub OAuth
+credentials and a real Resend key are likewise unexercised: the app boots, renders and
+completes the loop on placeholders by design, so neither has been proven against the real
+service.
 
 Deferred out of v0 and not to be smuggled in: DSL · witnesses · amendments · ledger ·
 calibration · receipts · OG images · cohorts.
 
 ---
 
-## Planned repo layout
+## Repo layout
 
-**Nothing below exists yet.** This is the target tree from
-[`architecture.md` §10](./docs/architecture.md), reproduced here so it is the first thing
-you see rather than the last.
+The target tree is [`architecture.md` §10](./docs/architecture.md). What exists today is the
+v0 subset of it — marked, so the gap between the design and the code is visible rather than
+inferred.
 
 ```
 pledge/
   apps/
-    web/                  Next.js — UI + /api/v1 route handlers
-    worker/               probe-worker + anchor-cron entrypoints
-    calibration/          Python: fit.py, features.py, Dockerfile
+    web/                  ✓ Next.js — profile, commitment page, composer, /api/v1
+    worker/               ✓ probe worker: pg-boss, sweep, the two v0 probe kinds
+    calibration/          ✗ v2 — Python: fit.py, features.py, Dockerfile
   packages/
-    spec/                 @pledge/spec       — lexer, parser, AST, canonicalise, evaluate
-    safe-fetch/           @pledge/safe-fetch — SSRF-hardened undici dispatcher
-    ledger/               chain append, Merkle, audit path
-    db/                   Drizzle schema + migrations + role grants
-    verify/               pledge-verify CLI
-  docs/                   ← the only directory that currently exists
+    db/                   ✓ Drizzle schema + migrations + role grants + shared contracts
+    safe-fetch/           ✓ @pledge/safe-fetch — SSRF-hardened undici dispatcher
+    spec/                 ✗ v1 — lexer, parser, AST, canonicalise, evaluate
+    ledger/               ✗ v1 — chain append, Merkle, audit path
+    verify/               ✗ v1 — pledge-verify CLI
+  scripts/
+    check-invariants.mjs  ✓ the build-time no-self-report check
+  docs/                   ✓ design documentation
 ```
 
+v0 has **no DSL**. The two probe kinds — `http(url).status` and `github.release(repo).tag` —
+are plain TypeScript functions over a small discriminated union, content-addressed the same
+way a parsed AST will be, so `packages/spec` replaces the union in v1 without a migration.
+The ledger is deliberately absent: it is v1, and the schema is designed so adding it is
+insert-only ([`roadmap.md`](./docs/roadmap.md) v0 anti-goal).
+
 **Boundary rule:** `packages/spec` may not depend on `packages/db`. The parser and evaluator
-must run in a browser (composer preview) and in the verifier CLI (no database at all).
+must run in a browser (composer preview) and in the verifier CLI (no database at all). The
+same rule already holds for `packages/safe-fetch`, which declares its own structurally
+identical types rather than importing them.
+
+Run it: [`DEVELOPMENT.md`](./DEVELOPMENT.md).
 
 ---
 
@@ -144,5 +166,9 @@ retention), all three of which gate public launch rather than development.
 
 ## Not yet built
 
-There is no code in this repository. It is design documentation for a product that has not
-started. Do not clone this expecting something runnable.
+v0 runs; everything past it is still design documentation. Not built, and not stubbed for:
+the DSL and parser · witnesses · amendments · the hash-chained ledger · Merkle checkpoints and
+Rekor anchoring · calibration and the forecast · signed receipts and `pledge-verify` · OG
+images · cohorts · badges · chat notifications · private commitments · the public API and PATs.
+
+Nothing is deployed. Clone it expecting a local loop, not a service.

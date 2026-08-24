@@ -147,9 +147,25 @@ tradeoff ever forces choosing, keep the isolation.**
 ### Test corpus (v0 exit criterion)
 
 `127.0.0.1` · `169.254.169.254` · `metadata.google.internal` · `10.0.0.1` · `[::1]` ·
-`[::ffff:127.0.0.1]` · `0.0.0.0` · `2130706433` (decimal-encoded) · `0x7f000001` ·
+`[::ffff:127.0.0.1]` · **`[::10.0.0.1]` and `[::a00:1]`** · `0.0.0.0` ·
+`2130706433` (decimal-encoded) · `0x7f000001` ·
 a DNS name resolving to private space · a name with both a public and a private A record ·
 a 3-hop redirect ending private · a `Location` header with a `file:` scheme.
+
+Two of these are load-bearing in a way the rest are not, and both were added after an
+adversarial review found the code passing the original corpus while still exploitable:
+
+- **`[::10.0.0.1]` / `[::a00:1]`** — the deprecated IPv4-compatible IPv6 form (RFC 4291
+  §2.5.5.1). `ipaddr.js` classifies `::a00:1` as `unicast` but the byte-identical
+  `::10.0.0.1` as `ipv4Mapped`, and the WHATWG URL parser rewrites the second spelling into
+  the first — so a range-based check sees `unicast` and allows it. **Both spellings must be
+  tested, and the check must inspect the raw parts rather than trusting `range()`.** The
+  original corpus said "v4-mapped and NAT64" and would not have caught this.
+- **A pinned-lookup honoured test** — assert the injected resolver is called exactly once and
+  the socket lands on the pinned IP. Without it, every other test here still passes if undici
+  stops honouring `connect.lookup`, because they either use a bare IP literal (no lookup) or
+  are rejected before any connect. That is the entire rebinding defence failing silently with
+  a green suite.
 
 ---
 

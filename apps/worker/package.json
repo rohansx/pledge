@@ -1,0 +1,22 @@
+{
+  "name": "@pledge/worker",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "start": "tsx src/index.ts",
+    "smoke": "tsx src/smoke.ts",
+    "build": "tsc --noEmit",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@pledge/db": "workspace:*",
+    "@pledge/safe-fetch": "workspace:*",
+    "drizzle-orm": "0.45.2",
+    "pg-boss": "12.27.0",
+    "postgres": "3.4.9",
+    "undici": "8.10.0",
+    "zod": "4.4.3"
+  }
+}

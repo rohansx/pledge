@@ -1,0 +1,27 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: pledge-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: pledge
+      POSTGRES_PASSWORD: pledge
+      POSTGRES_DB: pledge
+    ports:
+      # Host 5433 → container 5432. The container listens on the canonical 5432; the host
+      # port is shifted because a system Postgres commonly already owns 5432 on a dev box.
+      # If 5433 is also taken, change this and DATABASE_URL* in .env.local together.
+      - "5433:5432"
+    volumes:
+      - pledge-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      # `pnpm db:up` uses `--wait`, which blocks until this reports healthy, so migrations
+      # never race an initialising cluster.
+      test: ["CMD-SHELL", "pg_isready -U pledge -d pledge"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+      start_period: 5s
+
+volumes:
+  pledge-pgdata:
