@@ -7,6 +7,7 @@
  * inspectable is precisely the thing pledge exists to replace, so every surface that renders a
  * status renders this too, or links to it in one click.
  */
+import type { CommitmentRow, ProbeRunRow } from "@pledge/db";
 import type { DoneSpecV0, ProbeEvidence, ProbeOutcome } from "@pledge/db/types";
 
 /** One line, human-readable, exact. Not a paraphrase — this is what the probe checks. */
@@ -50,4 +51,44 @@ export function describeEvidence(outcome: ProbeOutcome, evidence: ProbeEvidence)
   return outcome === "pass"
     ? `observed the done-condition true — ${seen}`
     : `observed the done-condition false — ${seen}`;
+}
+
+/**
+ * The novelty check (done-spec-dsl.md §6.3, technical-spec.md §5 anti-gaming).
+ *
+ * A baseline snapshot of the target is captured at commit time, before the work. If a probe
+ * later passes against a byte-identical target, the done-condition was already true when the
+ * promise was made — the commitment did not cause anything. That is worth saying out loud
+ * next to the outcome, because a `kept` badge earned that way is exactly the badge pledge
+ * exists to be distinguishable from.
+ *
+ * THREE STATES, NOT TWO. A missing baseline means "we cannot say", never "unchanged": the
+ * capture can legitimately fail because the target was down when the commitment was made
+ * (schema.ts makes `baseline_sha256` nullable for precisely this reason). Returning `false`
+ * there would quietly promote an unknown into a clean bill of health.
+ */
+export type Novelty = "changed" | "unchanged_since_commitment" | "unknown";
+
+export function noveltyOf(
+  commitment: Pick<CommitmentRow, "baselineSha256">,
+  run: Pick<ProbeRunRow, "outcome" | "evidence"> | undefined,
+): Novelty {
+  if (commitment.baselineSha256 === null) return "unknown";
+  // Only a passing observation says anything about novelty. A `fail` means the condition was
+  // observed false, and an `error` observed nothing at all (CLAUDE.md I-7).
+  if (run === undefined || run.outcome !== "pass") return "unknown";
+  const observed = run.evidence.bodySha256;
+  if (observed === undefined) return "unknown";
+  return observed === commitment.baselineSha256 ? "unchanged_since_commitment" : "changed";
+}
+
+/**
+ * The sentence shown beside a passing outcome. `null` in the ordinary case — a record that
+ * annotated every healthy commitment would train readers to skim past the annotation on the
+ * one that matters.
+ */
+export function describeNovelty(novelty: Novelty): string | null {
+  return novelty === "unchanged_since_commitment"
+    ? "The target is byte-identical to the snapshot taken when this was committed. The condition was already true when the promise was made."
+    : null;
 }

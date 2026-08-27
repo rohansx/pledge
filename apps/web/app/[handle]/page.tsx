@@ -14,11 +14,18 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getAccountByHandle, getDb, listPublicCommitments } from "@pledge/db";
 import type { CommitmentStatus } from "@pledge/db/types";
+import { AmendmentHistory } from "@/components/amendment-history";
 import { LocalTime } from "@/components/local-time";
 import { StatusBadge } from "@/components/status-badge";
+import { deadlineWasMoved, originalDeadline } from "@/lib/amendments";
 import { formatInZone } from "@/lib/deadline";
-import { latestRunsFor } from "@/lib/queries";
-import { describeEvidence, describeSpec } from "@/lib/spec-display";
+import { amendmentsFor, latestRunsFor } from "@/lib/queries";
+import {
+  describeEvidence,
+  describeNovelty,
+  describeSpec,
+  noveltyOf,
+} from "@/lib/spec-display";
 
 /** technical-spec §10. Public reads are cached; the record changes at probe cadence. */
 export const revalidate = 60;
@@ -51,7 +58,9 @@ export default async function ProfilePage({ params }: PageProps) {
   if (account === undefined) notFound();
 
   const commitments = await listPublicCommitments(db, account.handle);
-  const latestRuns = await latestRunsFor(commitments.map((c) => c.commitment.id));
+  const ids = commitments.map((c) => c.commitment.id);
+  const latestRuns = await latestRunsFor(ids);
+  const amendmentsByCommitment = await amendmentsFor(ids);
 
   const counts = tally(commitments.map((c) => c.commitment.status));
 
@@ -87,6 +96,10 @@ export default async function ProfilePage({ params }: PageProps) {
           {commitments.map(({ commitment, spec }) => {
             const run = latestRuns.get(commitment.id);
             const href = `/c/${commitment.id}` as Route;
+            const amendments = amendmentsByCommitment.get(commitment.id) ?? [];
+            const moved = deadlineWasMoved(amendments);
+            const original = originalDeadline(commitment.deadline, amendments);
+            const noveltyNote = describeNovelty(noveltyOf(commitment, run));
             return (
               <li key={commitment.id} className="commitment">
                 <div className="commitment-head">
@@ -106,6 +119,18 @@ export default async function ProfilePage({ params }: PageProps) {
                         iso={commitment.deadline.toISOString()}
                         fallback={formatInZone(commitment.deadline, "UTC")}
                       />
+                      {/* On the profile too, not only on the detail page. The profile is the
+                          surface people judge a record by, and a moved deadline that is only
+                          visible one click deeper is a moved deadline that is hidden. */}
+                      {moved ? (
+                        <span className="moved">
+                          {" · moved · originally "}
+                          <LocalTime
+                            iso={original.toISOString()}
+                            fallback={formatInZone(original, "UTC")}
+                          />
+                        </span>
+                      ) : null}
                     </dd>
                   </div>
                   {commitment.resolvedAt !== null ? (
@@ -130,6 +155,17 @@ export default async function ProfilePage({ params }: PageProps) {
                 ) : (
                   <p className="evidence muted">No probe has run yet.</p>
                 )}
+
+                {noveltyNote !== null ? (
+                  <p className="novelty" role="note">
+                    {noveltyNote}
+                  </p>
+                ) : null}
+
+                {/* Reasons in full, on the profile. A record that showed "amended" as a badge
+                    and kept the reason a click away would be summarising the part that
+                    matters (architecture.md §5.1). */}
+                <AmendmentHistory amendments={amendments} />
               </li>
             );
           })}

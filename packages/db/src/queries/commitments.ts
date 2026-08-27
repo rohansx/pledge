@@ -8,6 +8,7 @@
  */
 import { and, desc, eq } from "drizzle-orm";
 import type { Db, DbOrTx } from "../client";
+import { appendLedgerEntry } from "./ledger";
 import { account, commitment, doneSpec, type CommitmentRow } from "../schema";
 import { SPEC_VERSION_V0, type DoneSpecV0 } from "../types";
 
@@ -23,11 +24,15 @@ export interface NewCommitment {
 }
 
 /**
- * Inserts the done-spec (shared across users, so conflicts are expected and ignored) and the
- * commitment in one transaction.
+ * Inserts the done-spec (shared across users, so conflicts are expected and ignored), the
+ * commitment, and the `commitment_created` ledger entry — in ONE transaction.
  *
- * `committed_at` is left to the column default — Postgres `now()` inside this transaction,
- * never an application clock (CLAUDE.md I-8).
+ * The ledger append is not optional and not deferrable (CLAUDE.md I-3): if it fails, the
+ * commitment fails with it. A commitment that exists without a ledger entry is a record with
+ * no provenance, which is the one thing this product cannot ship.
+ *
+ * `committed_at` and the entry's `created_at` are both left to the column default — Postgres
+ * `now()` inside this transaction, never an application clock (CLAUDE.md I-8).
  */
 export async function insertCommitment(db: Db, input: NewCommitment): Promise<CommitmentRow> {
   return db.transaction(async (tx) => {
@@ -49,6 +54,22 @@ export async function insertCommitment(db: Db, input: NewCommitment): Promise<Co
       })
       .returning();
     if (row === undefined) throw new Error("insertCommitment returned no row");
+
+    await appendLedgerEntry(tx, {
+      accountId: row.accountId,
+      entryType: "commitment_created",
+      payload: {
+        commitmentId: row.id,
+        claim: row.claim,
+        doneSpecHash: row.doneSpecHash,
+        specVersion: SPEC_VERSION_V0,
+        // The ORIGINAL deadline. Every later move is an `amended` entry; this value is what
+        // makes "moved twice and landed on time" reconstructible from the chain alone.
+        deadline: row.deadline.toISOString(),
+        visibility: row.visibility,
+      },
+    });
+
     return row;
   });
 }

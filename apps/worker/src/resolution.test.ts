@@ -24,7 +24,6 @@ import {
   recordProbeRun,
   requireEnv,
   type Db,
-  type DoneSpecV0,
   type ProbeOutcome,
   type ProbeResult,
 } from "@pledge/db";
@@ -40,6 +39,7 @@ import {
   UNREACHABLE_AT_DEADLINE,
   type WorkerDeps,
 } from "./handlers";
+import { GRACE_RETRY_MS, planProbe, PRIORITY_DEADLINE, PRIORITY_ROUTINE } from "./schedule";
 
 let owner: Db;
 let probeDb: Db;
@@ -58,7 +58,7 @@ afterAll(async () => {
 interface Enqueued {
   readonly queue: string;
   readonly data: Record<string, unknown>;
-  readonly startAfterSeconds?: number;
+  readonly options?: { readonly startAfterSeconds?: number; readonly priority?: number };
 }
 
 /** A commitment nobody else's test can touch, so runs do not have to be cleaned up. */
@@ -111,11 +111,10 @@ function deps(overrides: {
   const now = overrides.now ?? new Date();
   return {
     db: probeDb,
-    enqueue: async (queue, data, startAfterSeconds) => {
-      overrides.sink.push({ queue, data, startAfterSeconds });
+    enqueue: async (queue, data, options) => {
+      overrides.sink.push({ queue, data, options });
     },
-    runProbe: (_spec: DoneSpecV0) =>
-      Promise.resolve(result(overrides.outcome, overrides.ranAt ?? now)),
+    runProbe: () => Promise.resolve(result(overrides.outcome, overrides.ranAt ?? now)),
     now: () => now,
     log: { info: () => {}, warn: () => {} },
   };
@@ -160,12 +159,18 @@ describe("deadline+0 with an unobservable target", () => {
     expect(runs).toHaveLength(1);
     expect(runs[0]!.outcome).toBe("error");
 
-    const retry = sink.find((e) => e.queue === QUEUE_PROBE);
-    expect(retry?.data).toMatchObject({ commitmentId: id, authoritative: true });
-    expect(retry?.data.graceUntil).toBe(
-      new Date(deadline.getTime() + GRACE_WINDOW_MS).toISOString(),
-    );
-    expect(sink.some((e) => e.queue === QUEUE_NOTIFY)).toBe(false);
+    // The re-attempt is the sweep's business, not the handler's: `graceUntil` is a pure
+    // function of the deadline, so there is nothing for a retry job to carry and nothing a
+    // crash between the two could lose. See ./schedule.ts.
+    expect(sink).toHaveLength(0);
+    expect(
+      planProbe(
+        { commitmentId: id, deadline, lastRanAt: runs[0]!.ranAt },
+        new Date(now.getTime() + GRACE_RETRY_MS),
+      ),
+    ).toMatchObject({
+      authoritative: true,
+    });
   });
 
   it("becomes disputed, never missed, once the grace window has run out", async () => {
@@ -177,7 +182,6 @@ describe("deadline+0 with an unobservable target", () => {
     await handleProbeJob(deps({ outcome: "error", now, sink }), {
       commitmentId: id,
       authoritative: true,
-      graceUntil: new Date(now.getTime() - 60_000).toISOString(),
     });
 
     const after = await statusOf(id);
@@ -311,21 +315,7 @@ describe("duplicate delivery", () => {
 });
 
 describe("sweep", () => {
-  it("enqueues a routine probe now and the authoritative run at the deadline", async () => {
-    const now = new Date();
-    const id = await seedCommitment(new Date(now.getTime() + 2 * 60 * 60_000));
-    const sink: Enqueued[] = [];
-
-    await handleSweep(deps({ outcome: "pass", now, sink }));
-
-    const mine = sink.filter((e) => e.data.commitmentId === id);
-    expect(mine).toHaveLength(2);
-    expect(mine[0]).toMatchObject({ queue: QUEUE_PROBE, data: { authoritative: false } });
-    expect(mine[1]!.data.authoritative).toBe(true);
-    expect(mine[1]!.startAfterSeconds).toBeGreaterThan(7000);
-  });
-
-  it("does not schedule a deadline run that is still weeks away", async () => {
+  it("enqueues one routine probe for a commitment days out, at routine priority", async () => {
     const now = new Date();
     const id = await seedCommitment(new Date(now.getTime() + 30 * 86_400_000));
     const sink: Enqueued[] = [];
@@ -334,7 +324,57 @@ describe("sweep", () => {
 
     const mine = sink.filter((e) => e.data.commitmentId === id);
     expect(mine).toHaveLength(1);
-    expect(mine[0]!.data.authoritative).toBe(false);
+    expect(mine[0]).toMatchObject({
+      queue: QUEUE_PROBE,
+      data: { authoritative: false },
+      options: { priority: PRIORITY_ROUTINE },
+    });
+  });
+
+  it("enqueues the authoritative run FOR the deadline once it is within a tick", async () => {
+    const now = new Date();
+    const id = await seedCommitment(new Date(now.getTime() + 2 * 60_000));
+    const sink: Enqueued[] = [];
+
+    await handleSweep(deps({ outcome: "pass", now, sink }));
+
+    const mine = sink.filter((e) => e.data.commitmentId === id);
+    expect(mine).toHaveLength(1);
+    expect(mine[0]!.data.authoritative).toBe(true);
+    // architecture.md §8: deadline work jumps the queue ahead of daily probes.
+    expect(mine[0]!.options?.priority).toBe(PRIORITY_DEADLINE);
+    expect(mine[0]!.options?.startAfterSeconds).toBeGreaterThan(100);
+    expect(mine[0]!.options?.startAfterSeconds).toBeLessThanOrEqual(120);
+  });
+
+  it("enqueues nothing for a commitment observed moments ago", async () => {
+    const now = new Date();
+    const id = await seedCommitment(new Date(now.getTime() + 30 * 86_400_000));
+    await recordProbeRun(probeDb, {
+      commitmentId: id,
+      result: result("fail", now),
+      authoritative: false,
+    });
+
+    const sink: Enqueued[] = [];
+    await handleSweep(deps({ outcome: "fail", now, sink }));
+    expect(sink.filter((e) => e.data.commitmentId === id)).toHaveLength(0);
+  });
+
+  it("is idempotent: running twice over the same rows plans the same single probe", async () => {
+    const now = new Date();
+    const id = await seedCommitment(new Date(now.getTime() + 30 * 86_400_000));
+    const first: Enqueued[] = [];
+    const second: Enqueued[] = [];
+
+    await handleSweep(deps({ outcome: "pass", now, sink: first }));
+    await handleSweep(deps({ outcome: "pass", now, sink: second }));
+
+    // Same plan both times — pg-boss deduplicates nothing, and it does not have to: a
+    // duplicate delivery inserts a second observation and resolves nothing twice.
+    expect(second.filter((e) => e.data.commitmentId === id)).toEqual(
+      first.filter((e) => e.data.commitmentId === id),
+    );
   });
 });
 
@@ -352,45 +392,42 @@ describe("decideGrace", () => {
 
   it("finalises an observation immediately", () => {
     for (const outcome of ["pass", "fail"] as const) {
-      const decision = decideGrace({ authoritative: true, outcome, deadline, now: atDeadline });
-      expect(decision.finalize).toBe(true);
-      expect(decision.retryInSeconds).toBeUndefined();
+      expect(
+        decideGrace({ authoritative: true, outcome, deadline, now: atDeadline }).finalize,
+      ).toBe(true);
     }
   });
 
-  it("retries an unobservable target instead of finalising it", () => {
+  it("does not finalise an unobservable target while the window is open", () => {
     const decision = decideGrace({
       authoritative: true,
       outcome: "error",
       deadline,
       now: atDeadline,
     });
-
     expect(decision.finalize).toBe(false);
-    expect(decision.retryInSeconds).toBe(600);
     expect(decision.graceUntil).toEqual(new Date(deadline.getTime() + GRACE_WINDOW_MS));
   });
 
-  it("shortens the last retry so it lands inside the window, not after it", () => {
-    const decision = decideGrace({
-      authoritative: true,
-      outcome: "error",
-      deadline,
-      now: new Date(deadline.getTime() + GRACE_WINDOW_MS - 60_000),
-    });
-
-    expect(decision.retryInSeconds).toBe(60);
+  it("finalises once the window is spent", () => {
+    expect(
+      decideGrace({
+        authoritative: true,
+        outcome: "error",
+        deadline,
+        now: new Date(deadline.getTime() + GRACE_WINDOW_MS),
+      }).finalize,
+    ).toBe(true);
   });
 
-  it("finalises once the window is spent", () => {
-    const decision = decideGrace({
+  it("computes the same window from the deadline alone, however many attempts came before", () => {
+    const a = decideGrace({ authoritative: true, outcome: "error", deadline, now: atDeadline });
+    const b = decideGrace({
       authoritative: true,
       outcome: "error",
       deadline,
-      now: new Date(deadline.getTime() + GRACE_WINDOW_MS),
+      now: new Date(deadline.getTime() + 40 * 60_000),
     });
-
-    expect(decision.finalize).toBe(true);
-    expect(decision.retryInSeconds).toBeUndefined();
+    expect(a.graceUntil).toEqual(b.graceUntil);
   });
 });

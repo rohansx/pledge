@@ -14,12 +14,14 @@
     "typecheck": "tsc --noEmit",
     "generate": "drizzle-kit generate",
     "migrate": "tsx src/migrate.ts",
-    "seed": "tsx src/seed.ts"
+    "seed": "tsx src/seed.ts",
+    "ledger:verify": "tsx src/ledger-verify.ts"
   },
   "dependencies": {
     "drizzle-orm": "0.45.2",
     "postgres": "3.4.9",
-    "zod": "4.4.3"
+    "zod": "4.4.3",
+    "@pledge/ledger": "workspace:*"
   },
   "devDependencies": {
     "drizzle-kit": "0.31.10"

@@ -10,6 +10,22 @@ import { SafeFetchError, type SafeFetch, type SafeFetchResponse } from "@pledge/
 import { describe, expect, it } from "vitest";
 import { matchGlob } from "./glob";
 import { runProbe, type ProbeDeps } from "./probes";
+import type { ProbeTarget } from "./queries";
+
+/**
+ * Wraps a v0 spec as the row the probe path actually receives. `spec_version` pins evaluation
+ * semantics permanently (done-spec-dsl.md §8) — these commitments were made before the DSL
+ * existed and are still evaluated by the v0 functions, which is what this file exercises.
+ */
+const v0 = (spec: HttpStatusSpec | GithubReleaseTagSpec): ProbeTarget => ({
+  id: "11111111-1111-4111-8111-111111111111",
+  doneSpecHash: "0".repeat(64),
+  deadline: new Date("2026-09-05T18:00:00.000Z"),
+  committedAt: new Date("2026-09-01T00:00:00.000Z"),
+  baselineDigest: null,
+  specVersion: 0,
+  spec,
+});
 
 const NOW = new Date("2026-08-24T12:00:00.000Z");
 
@@ -52,7 +68,16 @@ function deps(overrides: Partial<ProbeDeps> = {}): ProbeDeps {
         throw new Error("fetch not stubbed");
       },
     },
+    registryFetch: (() => {
+      throw new Error("registryFetch not stubbed");
+    }) as unknown as typeof fetch,
+    dns: {
+      resolve4: () => Promise.reject(new Error("dns not stubbed")),
+      resolveCname: () => Promise.reject(new Error("dns not stubbed")),
+      resolveTxt: () => Promise.reject(new Error("dns not stubbed")),
+    },
     now: () => NOW,
+    baseline: () => Promise.resolve(null),
     ...overrides,
   };
 }
@@ -77,7 +102,7 @@ const json = (body: unknown, init?: ResponseInit) =>
 
 describe("http_status probe", () => {
   it("passes when the observed status is the expected one", async () => {
-    const result = await runProbe(httpSpec, deps({ safeFetch: async () => response() }));
+    const result = await runProbe(v0(httpSpec), deps({ safeFetch: async () => response() }));
 
     expect(result.outcome).toBe("pass");
     expect(result.evidence.status).toBe(200);
@@ -89,7 +114,7 @@ describe("http_status probe", () => {
 
   it("fails only on an observation — a wrong status, not a missing answer", async () => {
     const result = await runProbe(
-      httpSpec,
+      v0(httpSpec),
       deps({ safeFetch: async () => response({ status: 404 }) }),
     );
 
@@ -109,7 +134,7 @@ describe("http_status probe", () => {
     ["body_too_large", "over the 5MB cap"],
   ] as const)("records %s as error, never fail", async (code, message) => {
     const result = await runProbe(
-      httpSpec,
+      v0(httpSpec),
       deps({
         safeFetch: () => Promise.reject(new SafeFetchError(code, message, "10.0.0.7")),
       }),
@@ -126,7 +151,7 @@ describe("http_status probe", () => {
 
   it("treats an unrecognised throw as error rather than assuming anything", async () => {
     const result = await runProbe(
-      httpSpec,
+      v0(httpSpec),
       deps({ safeFetch: () => Promise.reject(new TypeError("boom")) }),
     );
 
@@ -138,7 +163,7 @@ describe("http_status probe", () => {
 describe("github_release_tag probe", () => {
   it("passes when the latest release tag matches the pattern", async () => {
     const result = await runProbe(
-      githubSpec,
+      v0(githubSpec),
       deps({
         github: {
           token: "t",
@@ -155,7 +180,7 @@ describe("github_release_tag probe", () => {
 
   it("fails when a tag was observed and it does not match", async () => {
     const result = await runProbe(
-      githubSpec,
+      v0(githubSpec),
       deps({
         github: {
           token: "t",
@@ -170,7 +195,7 @@ describe("github_release_tag probe", () => {
 
   it("reads a 404 as 'no release yet' only when the repo itself is visible", async () => {
     const result = await runProbe(
-      githubSpec,
+      v0(githubSpec),
       deps({
         github: {
           token: "t",
@@ -188,7 +213,7 @@ describe("github_release_tag probe", () => {
 
   it("does NOT read a 404 as a miss when the repo is invisible too", async () => {
     const result = await runProbe(
-      githubSpec,
+      v0(githubSpec),
       deps({
         github: {
           token: "t",
@@ -208,7 +233,7 @@ describe("github_release_tag probe", () => {
 
   it("records a rate limit as error", async () => {
     const result = await runProbe(
-      githubSpec,
+      v0(githubSpec),
       deps({
         github: {
           token: "t",
@@ -231,7 +256,7 @@ describe("github_release_tag probe", () => {
 
   it("records a 5xx as error", async () => {
     const result = await runProbe(
-      githubSpec,
+      v0(githubSpec),
       deps({
         github: {
           token: "t",
@@ -246,7 +271,7 @@ describe("github_release_tag probe", () => {
 
   it("records a transport failure as error", async () => {
     const result = await runProbe(
-      githubSpec,
+      v0(githubSpec),
       deps({
         github: {
           token: "t",
@@ -264,7 +289,7 @@ describe("github_release_tag probe", () => {
     const abort = new Error("The operation was aborted due to timeout");
     abort.name = "TimeoutError";
     const result = await runProbe(
-      githubSpec,
+      v0(githubSpec),
       deps({
         github: {
           token: "t",
@@ -279,7 +304,7 @@ describe("github_release_tag probe", () => {
 
   it("records an unreadable 200 body as error", async () => {
     const result = await runProbe(
-      githubSpec,
+      v0(githubSpec),
       deps({
         github: {
           token: "t",
@@ -299,7 +324,10 @@ describe("github_release_tag probe", () => {
       return Promise.resolve(json({ tag_name: "v0.2.0" }));
     }) as unknown as typeof fetch;
 
-    await runProbe(githubSpec, deps({ github: { token: "app-token", fetchImpl: capturing } }));
+    await runProbe(
+      v0(githubSpec),
+      deps({ github: { token: "app-token", fetchImpl: capturing } }),
+    );
 
     expect(seen?.get("authorization")).toBe("Bearer app-token");
     expect(seen?.get("user-agent")).toMatch(/^pledge-probe\//);

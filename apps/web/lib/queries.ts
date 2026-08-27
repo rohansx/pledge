@@ -1,20 +1,27 @@
 /**
- * Reads the pages need that @pledge/db does not already provide. Reads only — every write the
- * web tier makes goes through `insertCommitment`.
+ * Reads the pages need that @pledge/db does not already provide. Reads only — the web tier's
+ * writes go through `insertCommitment` and `recordAmendment`.
  *
- * `pledge_web` holds SELECT on `probe_run` (migration 0000) precisely so the commitment page
- * can show the observation history. What is rendered from it is facts about what was seen,
- * never a conclusion.
+ * `pledge_web` holds SELECT on `probe_run` and on `amendment` (migrations 0000 and 0001)
+ * precisely so the commitment page can show the observation history and the amendment
+ * history. What is rendered from either is facts about what happened, never a conclusion.
  */
-import { account, commitment, doneSpec, getDb, probeRun } from "@pledge/db";
-import type { CommitmentRow, DoneSpecV0, ProbeRunRow } from "@pledge/db";
-import { desc, eq, inArray } from "drizzle-orm";
+import { account, amendment, commitment, doneSpec, getDb, probeRun } from "@pledge/db";
+import type {
+  AmendmentRow,
+  CommitmentRow,
+  DoneSpecV0,
+  ProbeRunRow,
+} from "@pledge/db";
+import { asc, desc, eq, inArray } from "drizzle-orm";
 
 export interface CommitmentDetail {
   readonly commitment: CommitmentRow;
   readonly spec: DoneSpecV0;
   readonly handle: string;
   readonly runs: readonly ProbeRunRow[];
+  /** Oldest first: the order a history reads in, and the order "moved twice" is legible in. */
+  readonly amendments: readonly AmendmentRow[];
 }
 
 /** The commitment page. `undefined` when the id is unknown or the commitment is not public. */
@@ -39,7 +46,13 @@ export async function getPublicCommitmentDetail(
     .where(eq(probeRun.commitmentId, id))
     .orderBy(desc(probeRun.ranAt));
 
-  return { commitment: row.commitment, spec: row.spec, handle: row.handle, runs };
+  const amendments = await db
+    .select()
+    .from(amendment)
+    .where(eq(amendment.commitmentId, id))
+    .orderBy(asc(amendment.createdAt));
+
+  return { commitment: row.commitment, spec: row.spec, handle: row.handle, runs, amendments };
 }
 
 /** Most recent observation per commitment, for the evidence summary on the profile. */
@@ -61,4 +74,30 @@ export async function latestRunsFor(
     if (!latest.has(row.commitmentId)) latest.set(row.commitmentId, row);
   }
   return latest;
+}
+
+/**
+ * Amendments for a page of commitments, oldest first per commitment.
+ *
+ * The profile needs these, not just a count: "deadline moved" is only meaningful next to what
+ * it moved from, and a reader who cannot see the original is being shown a tidied record.
+ */
+export async function amendmentsFor(
+  commitmentIds: readonly string[],
+): Promise<ReadonlyMap<string, readonly AmendmentRow[]>> {
+  if (commitmentIds.length === 0) return new Map();
+
+  const rows = await getDb()
+    .select()
+    .from(amendment)
+    .where(inArray(amendment.commitmentId, [...commitmentIds]))
+    .orderBy(asc(amendment.createdAt));
+
+  const byCommitment = new Map<string, AmendmentRow[]>();
+  for (const row of rows) {
+    const list = byCommitment.get(row.commitmentId);
+    if (list === undefined) byCommitment.set(row.commitmentId, [row]);
+    else list.push(row);
+  }
+  return byCommitment;
 }

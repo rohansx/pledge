@@ -11,12 +11,13 @@
  * Requires the local Postgres and an applied migration: `pnpm db:up && pnpm db:migrate`.
  */
 import { randomUUID } from "node:crypto";
+import { sql } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { closeDb, createDb, type Db } from "../src/client";
 import { hashDoneSpec } from "../src/done-spec-hash";
 import { loadDevEnv, requireEnv } from "../src/env";
 import { insertCommitment } from "../src/queries/commitments";
-import { account, probeRun } from "../src/schema";
+import { account, ledgerEntry, probeRun } from "../src/schema";
 
 let probeDb: Db;
 
@@ -60,14 +61,26 @@ describe("pledge_probe grants", () => {
     await expectPermissionDenied("select * from commitment");
   });
 
-  it("cannot read commitment.account_id, so runs are not attributable to a person", async () => {
-    await expectPermissionDenied("select account_id from commitment");
+  /**
+   * v1 widened this by exactly one column and no further. `ledger_entry.account_id` is NOT
+   * NULL and the worker appends entries, so migration 0001 grants SELECT on this one column.
+   * What keeps the property intact is that it stays an OPAQUE UUID: the worker holds no
+   * privilege at all on `account`, which the tests above assert directly. Reading the id is
+   * not attribution; resolving it to a person is, and that is still refused.
+   */
+  it("reads commitment.account_id as an opaque id it cannot resolve to a person", async () => {
+    await expect(
+      probeDb.$client.unsafe("select account_id from commitment limit 1"),
+    ).resolves.toBeDefined();
+    await expectPermissionDenied(
+      "select a.handle from commitment c join account a on a.id = c.account_id limit 1",
+    );
   });
 
-  it("can read exactly the five columns evaluating a spec needs", async () => {
+  it("can read exactly the columns evaluating a spec and appending an entry need", async () => {
     await expect(
       probeDb.$client.unsafe(
-        "select id, done_spec_hash, deadline, status, committed_at from commitment limit 1",
+        "select id, done_spec_hash, deadline, status, committed_at, account_id from commitment limit 1",
       ),
     ).resolves.toBeDefined();
     await expect(
@@ -159,6 +172,87 @@ describe("immutability triggers", () => {
       await expect(
         owner.$client.unsafe(`delete from probe_run where id = '${run!.id}'`),
       ).rejects.toThrow(/immutable/i);
+    } finally {
+      await closeDb(owner);
+    }
+  });
+
+  /**
+   * v1 exit criterion, stated in roadmap.md as its own line: "`UPDATE ledger_entry` and
+   * `DELETE FROM ledger_entry` both raise, tested." (CLAUDE.md I-2, architecture.md §5.2
+   * rule 4.)
+   *
+   * Two layers, asserted separately because either one alone is a single point of failure:
+   * the trigger stops the OWNER — the role a migration script runs as, which is the hand
+   * §5.2 says the trigger exists to stop — and the grants stop the application roles before
+   * the trigger is ever reached.
+   */
+  it("refuses to update or delete a ledger entry, even as the owner", async () => {
+    const owner = createDb(requireEnv("DATABASE_URL"), { max: 1 });
+    try {
+      // Append through the real helper, so the row under test is a real chain entry and not
+      // a hand-built one that the trigger might treat differently.
+      const suffix = randomUUID().slice(0, 8);
+      const [acct] = await owner
+        .insert(account)
+        .values({
+          handle: `ledger-${suffix}`,
+          email: `ledger-${suffix}@example.test`,
+          githubId: -Number.parseInt(suffix, 16),
+        })
+        .returning();
+      const { spec, hash } = hashDoneSpec({
+        kind: "http_status",
+        url: `https://${suffix}.ledger.test`,
+        expectedStatus: 200,
+      });
+      const c = await insertCommitment(owner, {
+        accountId: acct!.id,
+        claim: "ledger immutability",
+        spec,
+        doneSpecHash: hash,
+        deadline: new Date(Date.now() + 86_400_000),
+      });
+      const [entry] = await owner
+        .select({ seq: ledgerEntry.seq })
+        .from(ledgerEntry)
+        .where(sql`${ledgerEntry.payload}->>'commitmentId' = ${c.id}`)
+        .limit(1);
+      expect(entry).toBeDefined();
+
+      await expect(
+        owner.$client.unsafe(
+          `update ledger_entry set payload = '{"tampered":true}'::jsonb where seq = ${entry!.seq}`,
+        ),
+      ).rejects.toThrow(/immutable/i);
+      await expect(
+        owner.$client.unsafe(`delete from ledger_entry where seq = ${entry!.seq}`),
+      ).rejects.toThrow(/immutable/i);
+      // A blanket DELETE, which is the shape a panicking cleanup script actually takes.
+      await expect(owner.$client.unsafe("delete from ledger_entry")).rejects.toThrow(
+        /immutable/i,
+      );
+    } finally {
+      await closeDb(owner);
+    }
+  });
+
+  it("withholds UPDATE and DELETE on ledger_entry from the application roles", async () => {
+    // The worker appends; it may never revise. `pledge_web` is NOLOGIN, so it is exercised
+    // through SET ROLE on the owner's connection rather than its own.
+    await expectPermissionDenied("update ledger_entry set payload = '{}'::jsonb");
+    await expectPermissionDenied("delete from ledger_entry");
+
+    const owner = createDb(requireEnv("DATABASE_URL"), { max: 1 });
+    try {
+      for (const statement of [
+        "update ledger_entry set payload = '{}'::jsonb",
+        "delete from ledger_entry",
+      ]) {
+        await expect(
+          owner.$client.unsafe(`set role pledge_web; ${statement}`),
+        ).rejects.toMatchObject({ code: "42501" });
+      }
     } finally {
       await closeDb(owner);
     }

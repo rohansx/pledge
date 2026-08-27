@@ -14,7 +14,7 @@ loadDevEnv(import.meta.dirname);
 const config: NextConfig = {
   // Workspace packages are shipped as TypeScript source so no package needs a build step
   // before another can import it. Next has to compile them itself.
-  transpilePackages: ["@pledge/db"],
+  transpilePackages: ["@pledge/db", "@pledge/ledger"],
   typedRoutes: true,
 };
 

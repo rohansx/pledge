@@ -20,7 +20,9 @@
  */
 import { sql } from "drizzle-orm";
 import type { Db } from "@pledge/db";
-import { sendResolutionMail } from "./mail";
+import { sendResolutionMail, sendWitnessOutcomeMail } from "./mail";
+import { listWitnessContacts } from "./witness-queries";
+import { mintWitnessToken } from "./witness-token";
 
 export const QUEUE_NOTIFY = "notify.resolution";
 
@@ -107,15 +109,59 @@ export async function drainResolutionNotices(db: Db, limit = 50): Promise<number
   const notices = await claimNotices(db, limit);
 
   for (const notice of notices) {
+    const url = `${baseUrl()}/c/${notice.commitmentId}`;
     sendResolutionMail({
       to: notice.email,
       handle: notice.handle,
       claim: notice.claim,
       status: notice.status,
-      url: `${process.env["NEXT_PUBLIC_BASE_URL"] ?? "http://localhost:3000"}/c/${notice.commitmentId}`,
+      url,
     });
+    await pingWitnesses(notice, url);
     await completeJob(db, notice.jobId);
   }
 
   return notices.length;
+}
+
+function baseUrl(): string {
+  return process.env["NEXT_PUBLIC_BASE_URL"] ?? "http://localhost:3000";
+}
+
+/**
+ * The second and last time a witness hears from us (product-overview.md §7): invited at
+ * commit, told at outcome, never in between.
+ *
+ * SWALLOWS ITS OWN ERRORS ON PURPOSE, and this is the one place in the codebase where that is
+ * correct rather than lazy. Resolution has already happened — in the worker's transaction,
+ * long before this job existed. Letting a missing WITNESS_LINK_SECRET or a Resend outage
+ * throw here would leave the committer's own mail sent, the job uncompleted, and the notice
+ * redelivered forever. Nothing in the notification path may affect a record
+ * (architecture.md §8), and that includes this function's ability to fail.
+ */
+async function pingWitnesses(notice: ResolutionNotice, url: string): Promise<void> {
+  try {
+    const contacts = await listWitnessContacts(notice.commitmentId);
+    const now = Date.now();
+
+    for (const contact of contacts) {
+      // A link that cannot work is worse than no link: it invites a click that lands on a
+      // refusal page. Spent and expired links get the outcome with no call to action.
+      const live = !contact.hasAttested && contact.expiresAt.getTime() > now;
+      const attestUrl = live
+        ? `${baseUrl()}/w/${mintWitnessToken(contact.witnessId, contact.expiresAt).token}`
+        : undefined;
+
+      sendWitnessOutcomeMail({
+        to: contact.email,
+        handle: notice.handle,
+        claim: notice.claim,
+        status: notice.status,
+        commitmentUrl: url,
+        ...(attestUrl === undefined ? {} : { attestUrl }),
+      });
+    }
+  } catch (error: unknown) {
+    console.warn(`[notify] witness ping failed for ${notice.commitmentId}:`, error);
+  }
 }

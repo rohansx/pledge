@@ -1,0 +1,12 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    // INVARIANT I-6: no Node-only APIs. `types: []` removes @types/node from scope, so a
+    // stray `fs`/`process`/`Buffer` fails to typecheck rather than failing in a browser
+    // bundle. DOM is here for `crypto.subtle` and `TextEncoder`, both of which exist
+    // identically in Node 22 — the point is that nothing Node-*specific* is reachable.
+    "types": [],
+    "lib": ["ES2023", "DOM"]
+  },
+  "include": ["src", "test"]
+}

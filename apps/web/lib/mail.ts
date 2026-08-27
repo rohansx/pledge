@@ -125,6 +125,149 @@ export function sendResolutionMail(input: ResolutionMailInput): void {
     });
 }
 
+export interface WitnessInviteMailInput {
+  readonly to: string;
+  /** Who asked. The witness is doing a favour for a person, not for pledge. */
+  readonly handle: string;
+  readonly claim: string;
+  /** Already rendered in the committer's zone. */
+  readonly deadline: string;
+  /** The full magic link, including the token. Goes in the mail and nowhere else. */
+  readonly attestUrl: string;
+  readonly commitmentUrl: string;
+}
+
+/**
+ * The invitation. One of the two moments a witness ever hears from us — commit and outcome,
+ * and nothing in between (product-overview.md §7). A witness is a social obligation, not a
+ * support burden, and a reminder drip is how this feature would become spam.
+ *
+ * Two things this copy must say, and both are consent rather than decoration:
+ *
+ *  · what a witness CAN do — the honest ceiling is `disputed`. Someone told they can "verify"
+ *    a commitment has been told something false (ADR-0006), and a witness who believes their
+ *    click produces a green tick is being used as a rubber stamp.
+ *  · that their address becomes public if they attest. That is the mitigation the whole
+ *    accountless design rests on (security.md T-02), so it cannot be a surprise afterwards.
+ */
+export function sendWitnessInviteMail(input: WitnessInviteMailInput): void {
+  const resend = resendClient();
+  if (resend === undefined) {
+    console.warn(
+      `[mail] RESEND_API_KEY not configured — skipping witness invite to ${input.to} for ${input.commitmentUrl}`,
+    );
+    return;
+  }
+
+  void resend.emails
+    .send({
+      from: FROM,
+      to: input.to,
+      subject: `${input.handle} put this on the record and named you as a witness`,
+      text: [
+        `${input.handle} made this commitment publicly:`,
+        "",
+        input.claim,
+        "",
+        `Deadline: ${input.deadline}`,
+        "",
+        "The outcome is decided by an automated probe against a stated done-spec, not by you",
+        "and not by them. You are not being asked to approve anything, and you cannot mark this",
+        "as done — nobody can.",
+        "",
+        "What you can do is put your own account of it on the record. If you say something the",
+        "probe contradicts, the commitment is permanently shown as contested rather than",
+        "settled. That is the most a witness can do, on purpose.",
+        "",
+        "One click, no account needed:",
+        input.attestUrl,
+        "",
+        `If you attest, your email address (${input.to}) is shown publicly next to your verdict,`,
+        "permanently. That attribution is the point; do not attest if you would rather not be",
+        "named. Doing nothing is a normal and complete answer.",
+        "",
+        "The link works once and expires in 14 days.",
+        "",
+        `The commitment: ${input.commitmentUrl}`,
+      ].join("\n"),
+    })
+    .then((result) => {
+      if (result.error !== null) {
+        console.warn(
+          `[mail] witness invite rejected for ${input.commitmentUrl}:`,
+          result.error,
+        );
+      }
+    })
+    .catch((error: unknown) => {
+      console.warn(`[mail] witness invite threw for ${input.commitmentUrl}:`, error);
+    });
+}
+
+export interface WitnessOutcomeMailInput {
+  readonly to: string;
+  readonly handle: string;
+  readonly claim: string;
+  readonly status: string;
+  readonly commitmentUrl: string;
+  /** Omitted once the witness has attested, or once their link has expired. */
+  readonly attestUrl?: string;
+}
+
+/**
+ * The second and last ping. What the record now says, and — only if their link is still
+ * unspent and unexpired — a way to add their account of it.
+ */
+export function sendWitnessOutcomeMail(input: WitnessOutcomeMailInput): void {
+  const resend = resendClient();
+  if (resend === undefined) {
+    console.warn(
+      `[mail] RESEND_API_KEY not configured — skipping witness ${input.status} notice to ${input.to} for ${input.commitmentUrl}`,
+    );
+    return;
+  }
+
+  const tail =
+    input.attestUrl === undefined
+      ? ["Nothing is being asked of you.", "", `The record: ${input.commitmentUrl}`]
+      : [
+          "You were named as a witness. Your link is still good if you want to put your own",
+          "account of this on the record:",
+          input.attestUrl,
+          "",
+          "Doing nothing is a normal and complete answer.",
+          "",
+          `The record: ${input.commitmentUrl}`,
+        ];
+
+  void resend.emails
+    .send({
+      from: FROM,
+      to: input.to,
+      subject: `Resolved ${input.status}: ${input.claim}`,
+      text: [
+        `A probe resolved ${input.handle}'s commitment ${input.status}.`,
+        "",
+        input.claim,
+        "",
+        describe(input.status),
+        "",
+        ...tail,
+      ].join("\n"),
+    })
+    .then((result) => {
+      if (result.error !== null) {
+        console.warn(
+          `[mail] witness outcome rejected for ${input.commitmentUrl}:`,
+          result.error,
+        );
+      }
+    })
+    .catch((error: unknown) => {
+      console.warn(`[mail] witness outcome threw for ${input.commitmentUrl}:`, error);
+    });
+}
+
 /** One line of plain fact per status. `disputed` is the one that needs explaining. */
 function describe(status: string): string {
   switch (status) {

@@ -2,21 +2,22 @@
  * The two job handlers, kept free of pg-boss and of `postgres` so they can be tested with a
  * real database and a fake queue (or neither).
  *
- * Scheduling in v0 is deliberately flat: a daily sweep enqueues one routine probe per open
- * commitment, plus the single authoritative run at `deadline+0`. The tightening backoff curve
- * (hourly at T-72h, 5-minutely in the final hour) is on the roadmap's deferred list — it
- * changes how *early* a `kept` is observed, not whether resolution is correct.
+ * Scheduling lives in ./schedule.ts as a pure function of (deadline, last observation, now).
+ * The sweep is a heartbeat that applies it; the probe handler makes one observation and
+ * records it. Neither knows anything about the other's timing, which is why killing the
+ * process between them cannot leave a half-scheduled commitment.
  */
-import {
-  listOpenCommitments,
-  recordProbeRun,
-  type Db,
-  type DoneSpecV0,
-  type ProbeResult,
-} from "@pledge/db";
-import { z } from "zod";
+import { recordProbeRun, type Db, type ProbeResult } from "@pledge/db";
 import { QUEUE_PROBE } from "@pledge/db";
-import { loadOpenCommitment } from "./queries";
+import { z } from "zod";
+import {
+  captureBaseline,
+  listDueCommitments,
+  loadOpenCommitment,
+  type ProbeTarget,
+} from "./queries";
+import { decideGrace, UNREACHABLE_AT_DEADLINE } from "./grace";
+import { planProbe, SWEEP_INTERVAL_MS } from "./schedule";
 
 // Re-exported, not redeclared: apps/web inserts jobs under this name inside the commitment's
 // own transaction, so a second string literal here is a way for the two tiers to disagree
@@ -30,18 +31,8 @@ export const QUEUE_SWEEP = "probe.sweep";
  */
 export const QUEUE_NOTIFY = "notify.resolution";
 
-/** Daily sweep. The window has to exceed the sweep interval or a deadline falls between runs. */
-const DEADLINE_LOOKAHEAD_MS = 25 * 60 * 60 * 1000;
-/** architecture.md §8: retry an unobservable target for an hour before giving up on it. */
-export const GRACE_WINDOW_MS = 60 * 60 * 1000;
-const GRACE_RETRY_MS = 10 * 60 * 1000;
-
-/**
- * Recorded in the finalising run's evidence message. There is no `dispute_reason` column in
- * v0, and the reason must survive somewhere a human can read it — the alternative is a
- * `disputed` commitment with no stated cause, which is worse than a slightly stringy field.
- */
-export const UNREACHABLE_AT_DEADLINE = "target_unreachable_at_deadline";
+export { GRACE_WINDOW_MS, SWEEP_INTERVAL_MS } from "./schedule";
+export { decideGrace, UNREACHABLE_AT_DEADLINE, type GraceDecision } from "./grace";
 
 export const ProbeJobSchema = z.object({
   commitmentId: z.uuid(),
@@ -50,8 +41,6 @@ export const ProbeJobSchema = z.object({
    * observing FALSE means nothing — a repo without its release at T-48h is not a miss.
    */
   authoritative: z.boolean(),
-  /** Set once the first authoritative run comes back unobservable; carried across retries. */
-  graceUntil: z.iso.datetime().optional(),
 });
 export type ProbeJob = z.infer<typeof ProbeJobSchema>;
 
@@ -64,88 +53,52 @@ export interface Logger {
 export type Enqueue = (
   queue: string,
   data: Record<string, unknown>,
-  startAfterSeconds?: number,
+  options?: { readonly startAfterSeconds?: number; readonly priority?: number },
 ) => Promise<void>;
 
 export interface WorkerDeps {
   readonly db: Db;
   readonly enqueue: Enqueue;
-  readonly runProbe: (spec: DoneSpecV0) => Promise<ProbeResult>;
+  readonly runProbe: (target: ProbeTarget) => Promise<ProbeResult>;
   readonly now: () => Date;
   readonly log: Logger;
 }
 
 // -----------------------------------------------------------------------------------------
-// Sweep
+// Sweep — the only scheduler
 // -----------------------------------------------------------------------------------------
 
+/**
+ * One heartbeat: ask every open commitment when it was last observed and enqueue whatever the
+ * backoff curve says is due.
+ *
+ * Planning is a pure function over rows the sweep just read, so a sweep that runs twice, or
+ * two sweeps that overlap, plan the same work and the second one enqueues nothing new. There
+ * is no claimed state, no lease, and therefore nothing to clean up if this process dies
+ * halfway through the loop.
+ */
 export async function handleSweep(deps: WorkerDeps): Promise<void> {
-  const open = await listOpenCommitments(deps.db);
-  const now = deps.now().getTime();
+  const open = await listDueCommitments(deps.db);
+  const now = deps.now();
+  let enqueued = 0;
 
-  for (const c of open) {
-    await deps.enqueue(QUEUE_PROBE, { commitmentId: c.id, authoritative: false });
-
-    const untilDeadline = c.deadline.getTime() - now;
-    if (untilDeadline <= DEADLINE_LOOKAHEAD_MS) {
-      // A deadline inside two sweep windows gets enqueued twice. That is fine and cheaper than
-      // deduplication state: a duplicate delivery inserts a second observation and resolves
-      // nothing twice (architecture.md §6.2).
-      await deps.enqueue(
-        QUEUE_PROBE,
-        { commitmentId: c.id, authoritative: true },
-        Math.max(0, untilDeadline) / 1000,
-      );
-    }
+  for (const row of open) {
+    const planned = planProbe(row, now, SWEEP_INTERVAL_MS);
+    if (planned === undefined) continue;
+    await deps.enqueue(
+      QUEUE_PROBE,
+      { commitmentId: planned.commitmentId, authoritative: planned.authoritative },
+      { startAfterSeconds: planned.startAfterSeconds, priority: planned.priority },
+    );
+    enqueued += 1;
   }
 
-  deps.log.info(`sweep enqueued probes for ${open.length} open commitment(s)`);
+  deps.log.info(`sweep: ${open.length} open commitment(s), ${enqueued} probe(s) enqueued`);
 }
 
 // -----------------------------------------------------------------------------------------
 // Probe
 // -----------------------------------------------------------------------------------------
-
-export interface GraceDecision {
-  /** May this run resolve the commitment on a non-pass outcome? */
-  readonly finalize: boolean;
-  /** Present when the run must be retried inside the grace window. */
-  readonly retryInSeconds?: number;
-  readonly graceUntil: Date;
-}
-
-/**
- * The `error`-at-the-deadline rule, as a pure function (architecture.md §8, security.md T-07).
- *
- *   not authoritative        → never finalises. A pass still resolves; nothing else does.
- *   authoritative + pass     → kept.
- *   authoritative + fail     → missed. This is an OBSERVATION that the condition is false.
- *   authoritative + error    → retry every 10 minutes until deadline+60m, then `disputed`.
- *                              Never `missed`. We did not see the target; saying someone
- *                              missed because their host was down is the bug this whole
- *                              product cannot afford.
- */
-export function decideGrace(input: {
-  readonly authoritative: boolean;
-  readonly outcome: ProbeResult["outcome"];
-  readonly deadline: Date;
-  readonly graceUntil?: Date;
-  readonly now: Date;
-}): GraceDecision {
-  const graceUntil = input.graceUntil ?? new Date(input.deadline.getTime() + GRACE_WINDOW_MS);
-
-  if (!input.authoritative) return { finalize: false, graceUntil };
-  if (input.outcome !== "error") return { finalize: true, graceUntil };
-
-  const remainingMs = graceUntil.getTime() - input.now.getTime();
-  if (remainingMs <= 0) return { finalize: true, graceUntil };
-
-  return {
-    finalize: false,
-    retryInSeconds: Math.min(GRACE_RETRY_MS, remainingMs) / 1000,
-    graceUntil,
-  };
-}
 
 export async function handleProbeJob(deps: WorkerDeps, job: ProbeJob): Promise<void> {
   const target = await loadOpenCommitment(deps.db, job.commitmentId);
@@ -156,37 +109,31 @@ export async function handleProbeJob(deps: WorkerDeps, job: ProbeJob): Promise<v
     return;
   }
 
-  const result = await deps.runProbe(target.spec);
+  const result = await deps.runProbe(target);
   const decision = decideGrace({
     authoritative: job.authoritative,
     outcome: result.outcome,
     deadline: target.deadline,
-    graceUntil: job.graceUntil === undefined ? undefined : new Date(job.graceUntil),
     now: deps.now(),
   });
 
+  if (!decision.finalize && job.authoritative && result.outcome === "error") {
+    deps.log.warn(
+      `target for ${job.commitmentId} unobservable at deadline ` +
+        `(${result.evidence.error?.code ?? "unknown"}); grace window closes ${decision.graceUntil.toISOString()}`,
+    );
+  }
+
+  // INVARIANT I-3: `recordProbeRun` inserts the observation, appends the `probe_result` ledger
+  // entry, applies whatever transition the outcome earns and appends the `resolved` entry —
+  // all in ONE transaction. If any append fails the state change rolls back with it. Killing
+  // this process anywhere inside that call leaves the commitment exactly as it was, and the
+  // re-delivered job resolves it (roadmap v1 exit criterion; see ./crash.test.ts).
   const recorded = await recordProbeRun(deps.db, {
     commitmentId: job.commitmentId,
     result: annotateIfGivingUp(result, decision.finalize),
     authoritative: decision.finalize,
   });
-
-  if (decision.retryInSeconds !== undefined) {
-    deps.log.warn(
-      `target for ${job.commitmentId} unobservable at deadline (${result.evidence.error?.code ?? "unknown"}); ` +
-        `retrying until ${decision.graceUntil.toISOString()}`,
-    );
-    await deps.enqueue(
-      QUEUE_PROBE,
-      {
-        commitmentId: job.commitmentId,
-        authoritative: true,
-        graceUntil: decision.graceUntil.toISOString(),
-      },
-      decision.retryInSeconds,
-    );
-    return;
-  }
 
   if (recorded.transitioned) {
     // Outside the resolution transaction, by construction: recordProbeRun has already
@@ -231,4 +178,13 @@ async function notifyResolution(
       `could not enqueue resolution notice for ${commitmentId}: ${error instanceof Error ? error.message : String(error)}`,
     );
   }
+}
+
+/**
+ * Binds the database-backed baseline store to the probe layer. Kept here so ./probes stays
+ * free of @pledge/db and can be exercised with no database at all.
+ */
+export function baselineStore(db: Db) {
+  return (commitmentId: string, digest: string): Promise<string | null> =>
+    captureBaseline(db, commitmentId, digest);
 }

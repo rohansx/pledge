@@ -43,9 +43,18 @@ async function main(): Promise<void> {
   const db = createDb(url, { max: 1 });
 
   try {
-    // TRUNCATE, not DELETE: the append-only triggers on done_spec and probe_run block row
-    // deletes by design, and a seed should not be the reason to weaken them.
-    await db.execute(sql`truncate probe_run, commitment, done_spec, account cascade`);
+    // TRUNCATE, not DELETE: the append-only triggers on done_spec, probe_run, ledger_entry,
+    // amendment and witness_attestation block row deletes by design, and a seed should not be
+    // the reason to weaken them. TRUNCATE is statement-level and deliberately left uncovered
+    // by those triggers so a scratch database can be reset; `cascade` reaches ledger_entry
+    // through its account_id foreign key.
+    await db.execute(
+      sql`truncate probe_run, commitment, done_spec, account, ledger_entry, amendment, witness, witness_attestation cascade`,
+    );
+    // Truncating the entries without rewinding the head would leave chain_head pointing at an
+    // entry that no longer exists, and `pnpm ledger:verify` would (correctly) call that a
+    // broken chain. Back to genesis: seq 0, 32 zero bytes.
+    await db.execute(sql`update chain_head set seq = 0, entry_hash = repeat('0', 64), updated_at = now() where id = 1`);
 
     const [account] = await db
       .insert(accountTable)

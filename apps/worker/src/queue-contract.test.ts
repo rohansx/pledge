@@ -14,7 +14,14 @@
  *
  * Requires the local Postgres and an applied migration: `pnpm db:up && pnpm db:migrate`.
  */
-import { createDb, closeDb, enqueueProbeJob, loadDevEnv, requireEnv, type Db } from "@pledge/db";
+import {
+  createDb,
+  closeDb,
+  enqueueProbeJob,
+  loadDevEnv,
+  requireEnv,
+  type Db,
+} from "@pledge/db";
 import { sql } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, expect, it } from "vitest";

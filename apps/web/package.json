@@ -14,6 +14,7 @@
     "@auth/drizzle-adapter": "1.11.3",
     "@date-fns/tz": "1.5.0",
     "@pledge/db": "workspace:*",
+    "@pledge/ledger": "workspace:*",
     "@react-email/components": "1.0.12",
     "date-fns": "4.4.0",
     "drizzle-orm": "0.45.2",

@@ -12,7 +12,9 @@
   },
   "dependencies": {
     "@pledge/db": "workspace:*",
+    "@pledge/ledger": "workspace:*",
     "@pledge/safe-fetch": "workspace:*",
+    "@pledge/spec": "workspace:*",
     "drizzle-orm": "0.45.2",
     "pg-boss": "12.27.0",
     "postgres": "3.4.9",

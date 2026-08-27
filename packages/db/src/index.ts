@@ -11,4 +11,5 @@ export * from "./queue";
 export * from "./queries/accounts";
 export * from "./queries/commitments";
 export * from "./queries/probes";
+export * from "./queries/ledger";
 export { loadDevEnv, requireEnv } from "./env";

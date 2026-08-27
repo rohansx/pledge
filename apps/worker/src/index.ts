@@ -14,6 +14,7 @@ import { createDb, loadDevEnv, requireEnv } from "@pledge/db";
 import { safeFetch } from "@pledge/safe-fetch";
 import { PgBoss, type Job } from "pg-boss";
 import {
+  baselineStore,
   handleProbeJob,
   handleSweep,
   ProbeJobSchema,
@@ -23,10 +24,17 @@ import {
   type Enqueue,
   type WorkerDeps,
 } from "./handlers";
+import { nodeDnsDeps } from "./observe";
 import { runProbe } from "./probes";
 
-/** 03:00 UTC daily. Fixed, not a backoff curve — the curve is v1 (roadmap deferred list). */
-const SWEEP_CRON = "0 3 * * *";
+/**
+ * The heartbeat. Every five minutes, not daily: the backoff curve tightens to five-minutely in
+ * the final hour (roadmap v1) and the sweep is the only thing that applies it, so the tick has
+ * to be at least as fine as the finest band. See ./schedule.ts — `SWEEP_INTERVAL_MS` must
+ * agree with this cron, and the deadline run is enqueued with `startAfter` rather than waiting
+ * for the next tick.
+ */
+const SWEEP_CRON = "*/5 * * * *";
 
 export function assertWorkerRole(role: string | undefined): void {
   if (role !== "worker") {
@@ -58,22 +66,30 @@ async function main(): Promise<void> {
     await boss.createQueue(queue);
   }
 
-  const enqueue: Enqueue = async (queue, data, startAfterSeconds) => {
-    await boss.send(
-      queue,
-      data,
-      startAfterSeconds === undefined ? {} : { startAfter: Math.ceil(startAfterSeconds) },
-    );
+  const enqueue: Enqueue = async (queue, data, options) => {
+    // architecture.md §8: a backlog must delay daily probes, not deadline probes. pg-boss
+    // orders available jobs by priority descending, so this is where that guarantee lands.
+    await boss.send(queue, data, {
+      ...(options?.startAfterSeconds === undefined
+        ? {}
+        : { startAfter: Math.ceil(options.startAfterSeconds) }),
+      ...(options?.priority === undefined ? {} : { priority: options.priority }),
+    });
   };
 
   const deps: WorkerDeps = {
     db,
     enqueue,
-    runProbe: (spec) =>
-      runProbe(spec, {
+    runProbe: (target) =>
+      runProbe(target, {
         safeFetch,
         github: { token: githubToken, fetchImpl: fetch },
+        // Registries are fixed origins and carry no credentials, so they take the plain
+        // global fetch. A user-supplied URL never reaches this one (CLAUDE.md I-5).
+        registryFetch: fetch,
+        dns: nodeDnsDeps(),
         now: () => new Date(),
+        baseline: baselineStore(db),
       }),
     now: () => new Date(),
     log: {

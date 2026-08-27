@@ -1,0 +1,77 @@
+# The v1 exit criteria name two things that only exist if a pipeline runs them:
+#
+#   · "Ledger verification script walks the full chain from genesis and confirms every
+#      entry_hash. Runs in CI against a seeded DB."   (roadmap.md, Phase v1)
+#   · "A test asserts no route handler can write status IN ('kept','missed')" — the
+#      no-self-report grep, which CLAUDE.md calls the one test whose failure invalidates the
+#      product rather than a feature (I-1).
+#
+# Both run below. `pnpm build` and `pnpm test` each shell out to scripts/check-invariants.mjs
+# first, so I-1 gates the build twice over; it is also run on its own so a failure names
+# itself in the job list instead of hiding inside a build log.
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: pledge
+          POSTGRES_PASSWORD: pledge
+          POSTGRES_DB: pledge
+        ports:
+          # Host 5433, same as docker-compose.yml, so the connection strings below are the
+          # ones a developer already has in .env.local.
+          - 5433:5432
+        options: >-
+          --health-cmd "pg_isready -U pledge -d pledge"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 30
+
+    env:
+      # .env.local is gitignored, so CI supplies the same values through the environment.
+      # These are throwaway credentials for an ephemeral container, not secrets.
+      DATABASE_URL: postgres://pledge:pledge@localhost:5433/pledge
+      DATABASE_URL_PROBE: postgres://pledge_probe:pledge_probe@localhost:5433/pledge
+      AUTH_SECRET: ci-only-not-a-secret-Ux0mQ0YQ1n0mS0mQ0YQ1n0mS0mQ0YQ1=
+      AUTH_GITHUB_ID: placeholder-github-oauth-client-id
+      AUTH_GITHUB_SECRET: placeholder-github-oauth-client-secret
+      GITHUB_APP_TOKEN: placeholder-github-token
+      RESEND_API_KEY: placeholder-resend-key
+      WITNESS_LINK_SECRET: ci-only-witness-secret
+      NEXT_PUBLIC_BASE_URL: http://localhost:3000
+      # Never `worker`. A CI box must not probe real user targets from an unpinned egress IP
+      # (CLAUDE.md, Conventions).
+      PLEDGE_ROLE: web
+
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+
+      - name: invariant I-1 — no self-reported resolution in apps/web
+        run: pnpm check:invariants
+
+      - run: pnpm db:migrate
+      - run: pnpm db:seed
+
+      - run: pnpm typecheck
+      - run: pnpm lint
+      - run: pnpm test
+      - run: pnpm build
+
+      - name: ledger — walk the whole chain from genesis
+        run: pnpm ledger:verify

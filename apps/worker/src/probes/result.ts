@@ -1,7 +1,7 @@
 /**
  * The only two ways to build a ProbeResult.
  *
- * INVARIANT I-2 lives here as a shape, not as a convention:
+ * INVARIANT I-7 lives here as a shape, not as a convention:
  *
  *   observed()    — we reached the target. It decides pass vs fail from a boolean the caller
  *                   computed from what came back. It cannot produce `error`.
@@ -12,6 +12,11 @@
  * is false" without deleting one of these functions. Collapsing the two would mark people as
  * having missed because of a network blip — the most reputation-destroying bug this product
  * could ship (architecture.md §8, technical-spec §6).
+ *
+ * v1 keeps the property as the surface grows. The observation layer (../observe) applies the
+ * same discipline one level down, per source: its Observation type has an observed shape with
+ * no error field and an unobserved shape with no values, so a source added later cannot invent
+ * a third answer. Every new source routes through it, and through these two functions.
  */
 import {
   EVIDENCE_HEADER_ALLOWLIST,

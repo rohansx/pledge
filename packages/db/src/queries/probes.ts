@@ -6,7 +6,9 @@
  * that does.
  */
 import { and, eq, sql } from "drizzle-orm";
+import { payloadSha256 } from "@pledge/ledger";
 import type { Db } from "../client";
+import { appendLedgerEntry, type LedgerTx } from "./ledger";
 import { commitment, doneSpec, probeRun } from "../schema";
 import type { CommitmentStatus, DoneSpecV0, ProbeResult } from "../types";
 
@@ -113,6 +115,34 @@ export async function recordProbeRun(
       .returning({ id: probeRun.id, ranAt: probeRun.ranAt });
     if (run === undefined) throw new Error("recordProbeRun inserted no probe_run row");
 
+    // Every observation is recorded on the chain, whether or not it resolves anything. A
+    // ledger that only carried resolutions would let the passing run be the only one anyone
+    // ever sees, and the honest history is that a target was checked and found wanting
+    // fourteen times first.
+    //
+    // The evidence enters by hash: `probe_run.evidence` holds the full object, and
+    // re-hashing that row is how a reader checks it was not edited afterwards.
+    const accountId = await accountIdOf(tx, commitmentId);
+    await appendLedgerEntry(tx, {
+      accountId,
+      entryType: "probe_result",
+      payload: {
+        commitmentId,
+        probeRunId: run.id,
+        probeKind: result.probeKind,
+        outcome: result.outcome,
+        // The CLAMPED ran_at that Postgres actually stored, not the worker's claim. A
+        // skewed worker clock must not be able to put a different time on the chain from
+        // the one in the observation log.
+        ranAt: run.ranAt.toISOString(),
+        // Round-tripped through JSON first: `ProbeEvidence` has optional keys, and an
+        // explicit `key: undefined` would make canonicalJson refuse (it refuses rather than
+        // silently dropping, so that two payloads cannot share one hash). This drops them
+        // exactly the way jsonb serialisation does, so the hash covers what is stored.
+        evidenceSha256: payloadSha256(JSON.parse(JSON.stringify(result.evidence))),
+      },
+    });
+
     const transition = nextStatus(result.outcome, authoritative);
     if (transition === undefined) {
       return {
@@ -134,7 +164,30 @@ export async function recordProbeRun(
       .update(commitment)
       .set({ status: transition, resolvedAt })
       .where(and(eq(commitment.id, commitmentId), eq(commitment.status, "open")))
-      .returning({ status: commitment.status });
+      .returning({ status: commitment.status, resolvedAt: commitment.resolvedAt });
+
+    if (updated !== undefined) {
+      if (updated.resolvedAt === null) {
+        // Unreachable while the commitment_status_transitions_are_earned CHECK stands. If it
+        // ever is reached, failing is right: an unresolvable timestamp must not be papered
+        // over with `new Date()`, which is exactly the application clock I-8 forbids.
+        throw new Error(`commitment ${commitmentId} resolved to ${transition} with no resolved_at`);
+      }
+      await appendLedgerEntry(tx, {
+        accountId: await accountIdOf(tx, commitmentId),
+        entryType: "resolved",
+        payload: {
+          commitmentId,
+          status: transition,
+          resolvedAt: updated.resolvedAt.toISOString(),
+          // Always "probe" here. This function is the probe path; a witness dispute and a
+          // withdrawal are written by their own handlers and say so themselves. The payload
+          // schema rejects any other pairing with kept/missed (ADR-0006).
+          resolvedBy: "probe",
+          probeRunId: run.id,
+        },
+      });
+    }
 
     return updated === undefined
       ? // Lost the race to another delivery, or already resolved. Not an error.
@@ -157,6 +210,21 @@ function nextStatus(
   // Only reachable at deadline+0. `fail` is an observation that the condition is false;
   // `error` is the absence of an observation. They are not the same event.
   return outcome === "fail" ? "missed" : "disputed";
+}
+
+/**
+ * `ledger_entry.account_id` is NOT NULL, so the worker has to read it. Migration 0001 grants
+ * `pledge_probe` SELECT on exactly this one extra column — an opaque UUID that the worker
+ * cannot resolve to a person, because it holds no privilege at all on `account`.
+ */
+async function accountIdOf(tx: LedgerTx, commitmentId: string): Promise<string> {
+  const [row] = await tx
+    .select({ accountId: commitment.accountId })
+    .from(commitment)
+    .where(eq(commitment.id, commitmentId))
+    .limit(1);
+  if (row === undefined) throw new Error(`commitment ${commitmentId} not found`);
+  return row.accountId;
 }
 
 async function currentStatus(

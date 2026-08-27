@@ -44,12 +44,14 @@ import { safeFetch } from "@pledge/safe-fetch";
 import { desc, eq } from "drizzle-orm";
 import { PgBoss, type Job } from "pg-boss";
 import {
+  baselineStore,
   handleProbeJob,
   ProbeJobSchema,
   QUEUE_NOTIFY,
   QUEUE_SWEEP,
   type WorkerDeps,
 } from "./handlers";
+import { nodeDnsDeps } from "./observe";
 import { runProbe } from "./probes";
 
 /**
@@ -164,7 +166,10 @@ async function main(): Promise<void> {
             token: process.env["GITHUB_APP_TOKEN"] ?? "",
             fetchImpl: fetch,
           },
+          registryFetch: fetch,
+          dns: nodeDnsDeps(),
           now: () => new Date(),
+          baseline: baselineStore(probeDb),
         }),
       now: () => new Date(),
       log: { info: (m) => console.log(`     ${m}`), warn: (m) => console.warn(`     ${m}`) },
@@ -234,7 +239,9 @@ async function main(): Promise<void> {
     console.log(`  SMOKE PASSED — commitment ${created.id}`);
     console.log(`    status      ${resolved.status}`);
     console.log(`    resolved_at ${resolved.resolvedAt?.toISOString() ?? "-"}`);
-    console.log(`    observed    ${TARGET_URL} → ${String(evidence.status)} @ ${evidence.resolvedIp}`);
+    console.log(
+      `    observed    ${TARGET_URL} → ${String(evidence.status)} @ ${evidence.resolvedIp}`,
+    );
     console.log(`    body sha256 ${evidence.bodySha256}`);
     console.log(`    profile     ${process.env["NEXT_PUBLIC_BASE_URL"] ?? ""}/${HANDLE}`);
   } finally {
