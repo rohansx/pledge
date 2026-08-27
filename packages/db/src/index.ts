@@ -8,6 +8,7 @@ export * from "./schema";
 export * from "./client";
 export * from "./done-spec-hash";
 export * from "./queue";
+export * from "./receipt";
 export * from "./queries/accounts";
 export * from "./queries/commitments";
 export * from "./queries/probes";

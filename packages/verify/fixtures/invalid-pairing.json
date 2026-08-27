@@ -1,0 +1,67 @@
+{
+  "format": "pledge.receipt.v1",
+  "issuer": "https://pledge.sh",
+  "commitment": {
+    "id": "01843b2f-1c9a-4a2e-8f30-000000000005",
+    "handle": "rohansx",
+    "claim": "v0.2 released with Kaggle T4 autoscaling",
+    "committed_at": "2026-08-25T09:14:22Z",
+    "deadline_original": "2026-09-05T18:29:00Z",
+    "deadline_effective": "2026-09-05T18:29:00Z",
+    "visibility": "public",
+    "cohort_slug": null
+  },
+  "done_spec": {
+    "spec_version": 1,
+    "hash": "sha256:95d1d3f9b31656e0dca29d5e339de94d33428849cde6639788b5adbcf8ca43ee",
+    "source": "github.release(\"rohansx/tethr\").tag matches \"v0.2.*\"",
+    "probe_class": "standard"
+  },
+  "outcome": {
+    "status": "kept",
+    "resolved_at": "2026-09-04T14:21:07Z",
+    "resolved_by": "withdrawal",
+    "days_estimated": 11.4,
+    "days_actual": 10.2,
+    "slip_ratio": 0.895,
+    "unchanged_since_commitment": false,
+    "censored": false
+  },
+  "amendments": [],
+  "evidence": [
+    {
+      "source": "github:release:rohansx/tethr",
+      "observed_at": "2026-09-04T14:21:07Z",
+      "resolved_ip": "140.82.121.6",
+      "status": 200,
+      "headers": {
+        "content-type": "application/json",
+        "etag": "W/\"a1b2\""
+      },
+      "body_sha256": "sha256:e630ef7bfea62c66e9d5c2acfffacb5b919ce69902aa6aa99a728ac45b28f429",
+      "body_bytes": 3312,
+      "matches": [
+        {
+          "op": "matches",
+          "pattern": "v0.2.*",
+          "value": "v0.2.1"
+        }
+      ]
+    }
+  ],
+  "attestations": [],
+  "ledger": {
+    "entry_seq": 84740,
+    "entry_hash": "sha256:ed7d31eab1380a3833a3243833f7626ecbf82d6fa0c9bd3845f442e6d3d55229",
+    "prev_hash": "sha256:b9f9090ff64df2a83f9b679bec0d51628a376cebadaa96ab6d491364e7c807d0",
+    "payload_sha256": "sha256:b7674c739cb90e6172a8fa50d528f6814be61e6d0179ac45008a6fc1476a39d5"
+  },
+  "anchor": null,
+  "anchor_pending": true,
+  "signature": {
+    "alg": "ed25519",
+    "public_key": "MCowBQYDK2VwAyEAxkvv1AWOWbYxRb45MAm4P12odMsHsO7C2m52nLviSyM=",
+    "key_id": "sha256:0fcb8e7c5d8b712f9cf12ef3e65443f4c6050c1efa2f15c487fdf9966e4e0ec5",
+    "value": "DnW2IJiNkMN9BDzyAVpa57TwjcPRwLqYhftR7AmiT414_TOIR2qO12xqYk3pfQlBnyRj743H-rYPfcqv9RLfBg"
+  }
+}

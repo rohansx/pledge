@@ -8,21 +8,40 @@
  * status renders this too, or links to it in one click.
  */
 import type { CommitmentRow, ProbeRunRow } from "@pledge/db";
-import type { DoneSpecV0, ProbeEvidence, ProbeOutcome } from "@pledge/db/types";
+import type { ProbeEvidence, ProbeOutcome, StoredDoneSpec } from "@pledge/db/types";
+import { print } from "@pledge/spec";
+
+/**
+ * A stored `done_spec.ast`, either era. An alias, not a second definition — the column's type
+ * lives in @pledge/db next to the column.
+ *
+ * Two eras coexist here and always will (done-spec-dsl.md §8): a v0 commitment made before the
+ * DSL existed keeps being rendered — and evaluated — as what it was, because retroactively
+ * restating what someone promised is the silent redefinition this product exists to prevent.
+ * The two shapes are disjoint on `kind` (`http_status`/`github_release_tag` against the AST's
+ * `and`/`or`/`not`/`compare`/`truthy`), so nothing has to guess.
+ */
+export type StoredSpec = StoredDoneSpec;
 
 /** One line, human-readable, exact. Not a paraphrase — this is what the probe checks. */
-export function describeSpec(spec: DoneSpecV0): string {
+export function describeSpec(spec: StoredSpec): string {
   switch (spec.kind) {
     case "http_status":
       return `http(${spec.url}).status == ${spec.expectedStatus}`;
     case "github_release_tag":
       return `github.release(${spec.repo}).tag matches ${spec.tagPattern}`;
+    // A v1 spec renders as its own canonical source, by the same printer the composer showed
+    // the committer and the verifier re-hashes (§5.1). Not a rewording of it — the bytes.
+    default:
+      return print(spec);
   }
 }
 
 /** The target the probe observes, for a compact profile line. */
-export function specTarget(spec: DoneSpecV0): string {
-  return spec.kind === "http_status" ? spec.url : spec.repo;
+export function specTarget(spec: StoredSpec): string {
+  if (spec.kind === "http_status") return spec.url;
+  if (spec.kind === "github_release_tag") return spec.repo;
+  return describeSpec(spec);
 }
 
 /**

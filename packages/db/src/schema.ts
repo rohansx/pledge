@@ -40,10 +40,10 @@ import {
 } from "@pledge/ledger";
 import type {
   CommitmentStatus,
-  DoneSpecV0,
   ProbeEvidence,
   ProbeKind,
   ProbeOutcome,
+  StoredDoneSpec,
 } from "./types";
 import { commitmentStatuses, probeKinds, probeOutcomes } from "./types";
 
@@ -113,8 +113,12 @@ export const doneSpec = pgTable(
     /** sha256 of the canonical JSON of the spec. See ./done-spec-hash.ts — that is the only
      * thing permitted to produce this value. */
     hash: text("hash").primaryKey(),
-    /** The spec itself. Named `ast` because v1 stores a parsed AST here under the same key. */
-    ast: jsonb("ast").$type<DoneSpecV0>().notNull(),
+    /**
+     * The spec itself. Named `ast` because v1 stores a parsed AST here under the same key —
+     * the same key, deliberately: a v1 spec is not a different fact about a commitment, it is
+     * the same fact in a language with a parser behind it. `spec_version` says which.
+     */
+    ast: jsonb("ast").$type<StoredDoneSpec>().notNull(),
     /** Pins evaluation semantics: a v0 spec always evaluates under v0 rules. */
     specVersion: smallint("spec_version").notNull(),
     createdAt: tz("created_at")

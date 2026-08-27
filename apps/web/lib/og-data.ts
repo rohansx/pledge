@@ -11,13 +11,15 @@
  */
 import { and, count, eq } from "drizzle-orm";
 import { account, amendment, commitment, doneSpec, getDb } from "@pledge/db";
-import type { CommitmentStatus, DoneSpecV0 } from "@pledge/db/types";
+import type { CommitmentStatus } from "@pledge/db/types";
+import type { StoredSpec } from "./spec-display";
 
 export interface CommitmentCardData {
   readonly handle: string;
   readonly claim: string;
   readonly status: CommitmentStatus;
-  readonly spec: DoneSpecV0;
+  /** Either era of stored spec — see `StoredSpec` in ./spec-display. */
+  readonly spec: StoredSpec;
   readonly amendmentCount: number;
 }
 

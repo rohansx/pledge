@@ -1,0 +1,75 @@
+{
+  "format": "pledge.receipt.v1",
+  "issuer": "https://pledge.sh",
+  "commitment": {
+    "id": "01843b2f-1c9a-4a2e-8f30-000000000004",
+    "handle": "rohansx",
+    "claim": "Migrate the billing worker",
+    "committed_at": "2026-08-25T09:14:22Z",
+    "deadline_original": "2026-09-05T18:29:00Z",
+    "deadline_effective": "2026-09-05T18:29:00Z",
+    "visibility": "public",
+    "cohort_slug": null
+  },
+  "done_spec": {
+    "spec_version": 1,
+    "hash": "sha256:95d1d3f9b31656e0dca29d5e339de94d33428849cde6639788b5adbcf8ca43ee",
+    "source": "github.release(\"rohansx/tethr\").tag matches \"v0.2.*\"",
+    "probe_class": "standard"
+  },
+  "outcome": {
+    "status": "disputed",
+    "resolved_at": "2026-09-04T14:21:07Z",
+    "resolved_by": "witness",
+    "days_estimated": 11.4,
+    "days_actual": 10.2,
+    "slip_ratio": 0.895,
+    "unchanged_since_commitment": false,
+    "censored": false
+  },
+  "amendments": [],
+  "evidence": [
+    {
+      "source": "github:release:rohansx/tethr",
+      "observed_at": "2026-09-04T14:21:07Z",
+      "resolved_ip": "140.82.121.6",
+      "status": 200,
+      "headers": {
+        "content-type": "application/json",
+        "etag": "W/\"a1b2\""
+      },
+      "body_sha256": "sha256:e630ef7bfea62c66e9d5c2acfffacb5b919ce69902aa6aa99a728ac45b28f429",
+      "body_bytes": 3312,
+      "matches": [
+        {
+          "op": "matches",
+          "pattern": "v0.2.*",
+          "value": "v0.2.1"
+        }
+      ]
+    }
+  ],
+  "attestations": [
+    {
+      "witness_ref": "3f6a4c11-0f21-4f5b-9c7e-0000000000ff",
+      "verdict": "disputes",
+      "note": "The tag exists but points at an empty release; nothing was actually shipped.",
+      "signed_at": "2026-09-05T08:11:00Z",
+      "ledger_seq": 84730
+    }
+  ],
+  "ledger": {
+    "entry_seq": 84731,
+    "entry_hash": "sha256:3861051e8a69b22e28bf13ed9d77969f912fa4231de9972c750292dc353ba518",
+    "prev_hash": "sha256:f399393816c519246aa9096ea80873ab96ef96b5c3375d1a87e4f775d813a679",
+    "payload_sha256": "sha256:583d48f5e36f2a79f6247f047ef70e331f526c2767e8c7d3a5e8ba67e5615bfa"
+  },
+  "anchor": null,
+  "anchor_pending": true,
+  "signature": {
+    "alg": "ed25519",
+    "public_key": "MCowBQYDK2VwAyEAxkvv1AWOWbYxRb45MAm4P12odMsHsO7C2m52nLviSyM=",
+    "key_id": "sha256:0fcb8e7c5d8b712f9cf12ef3e65443f4c6050c1efa2f15c487fdf9966e4e0ec5",
+    "value": "qhCBpYBC1OeO7UdAToeJrf1TTNYokHomPfERr79Ox1m-ZoeOfkQbL6o0Al3YtlKFwxt1432-g0F_gPAfM9IUBw"
+  }
+}

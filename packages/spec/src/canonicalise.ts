@@ -9,7 +9,7 @@
  *                                                     → visit.ts, at CST→AST time
  *   2. Normalise sources.                             → visit.ts (normalise.ts), at parse time
  *   3. Normalise literals.                            → visit.ts (normalise.ts), at parse time
- *   4. Sort commutative operand pairs — and/or ONLY.  → here, `canonicalise`
+ *   4. Flatten and sort commutative RUNS — and/or ONLY. → here, `canonicalise`
  *   5. Drop `dsl_source`.                             → here, by construction: `toJson` emits
  *                                                        the AST and the AST has no source text
  *   6. Serialise with RFC 8785 JCS.                   → here, `canonicalJson`
@@ -22,7 +22,16 @@
  * WHY COMPARISON OPERANDS ARE NOT SORTED (§5 step 4): `x > 5` and `5 < x` are different ASTs
  * by design. Normalising them would make the error messages incomprehensible — a probe that
  * reports "5 < status was false" is telling the author about a spec they did not write. Only
- * the two operands of `and`/`or` are commutative, and only those are ordered.
+ * the operands of `and`/`or` are commutative, and only those are ordered.
+ *
+ * WHY THE SORT IS N-ARY AND NOT PAIRWISE (§5 step 4): `and` and `or` are associative as well as
+ * commutative, so the nesting of a flat run carries no meaning either. Sorting pairwise at each
+ * node canonicalises a two-term run but not a three-term one — the parser left-folds, so
+ * permuting `a and b and c` gives `((a and c) and b)` versus `((a and b) and c)`, two trees no
+ * pairwise swap can reconcile. That is the §5.1 property failing in the safe direction (a
+ * spurious difference, never a collision), but failing all the same: two specs that mean the
+ * same thing must share a hash. So a run of one kind is flattened, ordered whole, and rebuilt
+ * left-associated.
  */
 import { sha256 } from "@noble/hashes/sha2.js";
 import { bytesToHex, utf8ToBytes } from "@noble/hashes/utils.js";
@@ -45,15 +54,20 @@ export function canonicalise(node: SpecNode): SpecNode {
   switch (node.kind) {
     case "and":
     case "or": {
-      const left = canonicalise(node.left);
-      const right = canonicalise(node.right);
-      // "order the two operands by their own canonical serialisation" — literally that, so the
+      const parts: SpecNode[] = [];
+      flattenRun(node.kind, node, parts);
+      // "order the operands by their own canonical serialisation" — literally that, so the
       // ordering is decided by the same bytes that get hashed and not by some proxy for them.
-      // ponytail: re-serialises each subtree on every comparison, O(n²) on tree depth. A spec
-      // is capped at 4000 characters, so this is microseconds; memoise if that cap ever moves.
-      return jcs(toJson(left)) <= jcs(toJson(right))
-        ? { kind: node.kind, left, right }
-        : { kind: node.kind, left: right, right: left };
+      // ponytail: re-serialises each operand once per sort comparison, O(n log n) serialisations
+      // on a run whose length a 4000-character spec caps in the low tens. Memoise if that moves.
+      const keyed = parts.map((part) => ({ part, key: jcs(toJson(part)) }));
+      keyed.sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
+      const [first, ...rest] = keyed;
+      if (first === undefined) throw new Error("unreachable: an and/or run has two operands");
+      return rest.reduce<SpecNode>(
+        (left, next) => ({ kind: node.kind, left, right: next.part }),
+        first.part,
+      );
     }
     case "not": {
       const operand = canonicalise(node.operand);
@@ -66,6 +80,27 @@ export function canonicalise(node: SpecNode): SpecNode {
     case "truthy":
       return { kind: "truthy", accessor: canonicalAccessor(node.accessor) };
   }
+}
+
+/**
+ * Collects the operands of one `and`/`or` run, each already canonical.
+ *
+ * The re-check after `canonicalise` is the part that is easy to leave out and that idempotence
+ * depends on: folding `not not (a and b)` turns an operand that was NOT of this kind into one
+ * that is, and leaving it nested would mean `canonicalise(canonicalise(x)) !== canonicalise(x)`.
+ */
+function flattenRun(kind: "and" | "or", node: SpecNode, out: SpecNode[]): void {
+  if (node.kind === kind) {
+    flattenRun(kind, node.left, out);
+    flattenRun(kind, node.right, out);
+    return;
+  }
+  const operand = canonicalise(node);
+  if (operand.kind === kind) {
+    flattenRun(kind, operand, out);
+    return;
+  }
+  out.push(operand);
 }
 
 function canonicalAccessor(accessor: Accessor): Accessor {

@@ -128,6 +128,31 @@ describe("semantic injectivity: same meaning, same hash", () => {
       'github.commits("o/r").since(commit_time).by("nobody").count >= 3',
       'github.commits("o/r").by("nobody").since(commit_time).count >= 3',
     ],
+    [
+      "and is associative as well as commutative, so a 3-term run has no order (§5 step 4)",
+      'dns("a.io").resolves and dns("b.io").resolves and dns("c.io").resolves',
+      'dns("a.io").resolves and dns("c.io").resolves and dns("b.io").resolves',
+    ],
+    [
+      "...and no nesting either: the run is flattened before it is ordered",
+      '(dns("a.io").resolves and dns("b.io").resolves) and dns("c.io").resolves',
+      'dns("a.io").resolves and (dns("b.io").resolves and dns("c.io").resolves)',
+    ],
+    [
+      "or runs flatten the same way",
+      'dns("a.io").resolves or (dns("b.io").resolves or dns("c.io").resolves)',
+      'dns("c.io").resolves or dns("a.io").resolves or dns("b.io").resolves',
+    ],
+    [
+      "all() of three is the same run as two ands, in any order (§4.2)",
+      'all(dns("c.io").resolves, dns("a.io").resolves, dns("b.io").resolves)',
+      'dns("a.io").resolves and dns("b.io").resolves and dns("c.io").resolves',
+    ],
+    [
+      "a nested run of the OTHER kind is an operand, not part of the run",
+      'dns("a.io").resolves and (dns("b.io").resolves or dns("c.io").resolves)',
+      '(dns("c.io").resolves or dns("b.io").resolves) and dns("a.io").resolves',
+    ],
   ];
 
   for (const [why, left, right] of equivalent) {
@@ -189,10 +214,14 @@ describe("semantic injectivity: different meaning, different hash", () => {
     'http("https://a.io").status == 200 and dns("a.io").resolves',
     'http("https://a.io").status == 200 or dns("a.io").resolves',
     'not (http("https://a.io").status == 200 and dns("a.io").resolves)',
-    // Association is not an equivalence §5 lists, and left- versus right-nesting is a
-    // different tree: three-term specs must not fold into each other.
-    '(dns("a.io").resolves and dns("b.io").resolves) and dns("c.io").resolves',
-    'dns("a.io").resolves and (dns("b.io").resolves and dns("c.io").resolves)',
+    // Three-term runs of DIFFERENT kinds, and the same three terms grouped differently ACROSS
+    // kinds, are different specs and must stay apart. (Re-nesting within one kind is not: §5
+    // step 4 flattens a run, so `(a and b) and c` and `a and (b and c)` are one hash — see the
+    // "same meaning, same hash" table above.)
+    'dns("a.io").resolves and dns("b.io").resolves and dns("c.io").resolves',
+    'dns("a.io").resolves or dns("b.io").resolves or dns("c.io").resolves',
+    '(dns("a.io").resolves or dns("b.io").resolves) and dns("c.io").resolves',
+    'dns("a.io").resolves or (dns("b.io").resolves and dns("c.io").resolves)',
   ] as const;
 
   it("no two specs in the corpus share a hash", () => {

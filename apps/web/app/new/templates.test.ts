@@ -1,6 +1,11 @@
 /**
  * The five template expansions, pinned against done-spec-dsl.md §9.
  *
+ * The table itself lives in `@pledge/spec` — ONE copy, because §9 is normative and a second
+ * transcription is a second thing that can quietly stop being true. This file is the web
+ * tier's proof that the composer reaches that copy and that what it produces is a spec the
+ * parser accepts.
+ *
  * §9's table is normative: users pick the left column and get the right column, and the right
  * column is what gets canonicalised and hashed. So these assertions are transcriptions of the
  * document, not descriptions of the code — if an expansion here has to change to make a test
@@ -12,7 +17,7 @@
  * a rendered preview and catastrophic in a record.
  */
 import { describe, expect, it } from "vitest";
-import { TEMPLATES, getTemplate, isComplete, quote, templateIds } from "./templates";
+import { TEMPLATES, compile, getTemplate, isComplete, parse, quote, templateIds } from "@pledge/spec";
 
 describe("templates — §9 expansions", () => {
   it("Release a version", () => {
@@ -119,6 +124,44 @@ describe("quote", () => {
     // Canonicalisation rejects control characters outright. Escaping keeps the preview honest
     // about what was typed so the rejection is legible; dropping it would hide the cause.
     expect(quote("a\nb")).toBe('"a\\nb"');
+  });
+});
+
+describe("templates — reachable from the product", () => {
+  // The audit this file answers: the table was complete, unit-tested, and imported by nothing.
+  // A template whose expansion the parser rejects is a template nobody can commit, and
+  // asserting the expansion STRING alone would never have caught it.
+  it("every filled template compiles", () => {
+    for (const template of TEMPLATES) {
+      const source = template.expand(filled(template.blanks.map((b) => b.name)));
+      const result = compile(source);
+      if (!result.ok) {
+        throw new Error(`${template.id}: ${result.issues.map((i) => i.message).join("; ")}`);
+      }
+      expect(result.spec.hash).toMatch(/^[0-9a-f]{64}$/);
+    }
+  });
+
+  it("every canonical rendering is a fixed point of the parser", () => {
+    // §5.1: what the composer shows before commit must re-parse to the same spec, or the
+    // sentence the committer read is not the sentence that was hashed.
+    for (const template of TEMPLATES) {
+      const source = template.expand(filled(template.blanks.map((b) => b.name)));
+      const first = compile(source);
+      if (!first.ok) throw new Error(`${template.id} did not compile`);
+      const again = compile(first.spec.dslSource);
+      if (!again.ok) throw new Error(`${template.id} canonical form did not re-compile`);
+      expect(again.spec.hash).toBe(first.spec.hash);
+      expect(again.spec.dslSource).toBe(first.spec.dslSource);
+    }
+  });
+
+  it("an unfilled template does not parse, so incomplete cannot reach the server", () => {
+    // The composer gates its submit button on exactly this, which is why it needs no second
+    // completeness rule of its own.
+    for (const template of TEMPLATES) {
+      expect(parse(template.expand({})).ok).toBe(false);
+    }
   });
 });
 

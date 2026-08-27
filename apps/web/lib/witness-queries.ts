@@ -17,7 +17,7 @@
  */
 import { desc, eq } from "drizzle-orm";
 import { account, commitment, doneSpec, getDb, witness, witnessAttestation } from "@pledge/db";
-import type { CommitmentStatus, DoneSpecV0 } from "@pledge/db/types";
+import type { CommitmentStatus, StoredDoneSpec } from "@pledge/db/types";
 import type { WitnessVerdict } from "@pledge/ledger";
 
 export interface PublicAttestation {
@@ -66,7 +66,7 @@ export interface WitnessLinkState {
   readonly usedAt: Date | null;
   /** Enough of the commitment to decide honestly, including the criterion (security.md T-04). */
   readonly claim: string;
-  readonly spec: DoneSpecV0;
+  readonly spec: StoredDoneSpec;
   readonly deadline: Date;
   readonly status: CommitmentStatus;
   readonly handle: string;

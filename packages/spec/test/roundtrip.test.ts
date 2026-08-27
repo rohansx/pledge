@@ -14,6 +14,7 @@ import { canonicalise, hash, parse, parseOrThrow, print, type SpecNode } from ".
 import { generateSpec, rng } from "./generate";
 
 const ITERATIONS = 500;
+const leaf = (host: string): SpecNode => parseOrThrow(`dns("${host}").resolves`);
 const SEED = 0x706c6467; // "pldg"
 
 describe("round-trip", () => {
@@ -55,19 +56,65 @@ describe("round-trip", () => {
   });
 
   it("prints parentheses wherever re-parsing would re-associate", () => {
-    // §5 step 1 left-associates rather than flattening, so these are two different trees. Each
-    // has to survive its own round-trip, and they must not converge onto one hash.
+    // The printer still has to parenthesise a right-nested same-kind child, because it is handed
+    // ASTs that did not come from `canonicalise` — a spec loaded from a receipt, a hand-built
+    // tree. Constructed directly rather than parsed, since the parser left-folds and
+    // canonicalisation would flatten it back out (§5 step 4).
+    const rightNested: SpecNode = {
+      kind: "and",
+      left: leaf("a.io"),
+      right: { kind: "and", left: leaf("b.io"), right: leaf("c.io") },
+    };
+    expect(print(rightNested)).toBe(
+      'dns("a.io").resolves and (dns("b.io").resolves and dns("c.io").resolves)',
+    );
+    expect(parseOrThrow(print(rightNested))).toEqual(rightNested);
+  });
+
+  it("flattens an and/or run, so nesting within one kind is not a difference (§5 step 4)", () => {
+    // This test used to assert the opposite. It was wrong: `and` is associative as well as
+    // commutative, so a flat run's grouping carries no meaning, and §5.1 requires two specs that
+    // mean the same thing to share a hash. Pairwise sorting canonicalised a 2-term run and not a
+    // 3-term one, which left a spurious difference — the safe direction, but a defect.
     const left = canonicalise(
       parseOrThrow('(dns("a.io").resolves and dns("b.io").resolves) and dns("c.io").resolves'),
     );
     const right = canonicalise(
       parseOrThrow('dns("a.io").resolves and (dns("b.io").resolves and dns("c.io").resolves)'),
     );
+    const permuted = canonicalise(
+      parseOrThrow('dns("c.io").resolves and dns("a.io").resolves and dns("b.io").resolves'),
+    );
 
-    for (const tree of [left, right]) {
+    expect(hash(left)).toBe(hash(right));
+    expect(hash(left)).toBe(hash(permuted));
+    // Left-associated on the way out, so the printer never needs a parenthesis for it.
+    expect(print(left)).toBe(
+      'dns("a.io").resolves and dns("b.io").resolves and dns("c.io").resolves',
+    );
+    for (const tree of [left, right, permuted]) {
       expect(canonicalise(parseOrThrow(print(tree)))).toEqual(tree);
+      // Idempotence is the part flattening is easiest to break, because folding `not not` can
+      // turn an operand into a member of the run it sits in.
+      expect(canonicalise(tree)).toEqual(tree);
     }
-    expect(hash(left)).not.toBe(hash(right));
+
+    // The parser folds `not not` at CST→AST time, so only an AST that arrived from somewhere
+    // else can carry one — a `done_spec.ast` row, a spec loaded from a receipt by the verifier.
+    // Folding it turns an operand that was NOT part of the run into one that is, and a flatten
+    // that does not re-check after folding leaves it nested: not idempotent, and a third hash
+    // for the same three terms.
+    const doubleNegated: SpecNode = {
+      kind: "and",
+      left: leaf("a.io"),
+      right: {
+        kind: "not",
+        operand: { kind: "not", operand: { kind: "and", left: leaf("b.io"), right: leaf("c.io") } },
+      },
+    };
+    const folded = canonicalise(doubleNegated);
+    expect(canonicalise(folded)).toEqual(folded);
+    expect(hash(folded)).toBe(hash(left));
   });
 
   it("keeps an integral decimal a decimal", () => {

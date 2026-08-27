@@ -22,7 +22,7 @@
  * (docs/security.md T-03).
  */
 import { createHash } from "node:crypto";
-import { canonicalJson, type JsonValue } from "./canonical-json";
+import { canonicalJson, type JsonValue } from "./canonical-json.ts";
 
 /** Lowercase hex sha256. Every hash crossing a boundary in this codebase is this shape. */
 export type HashHex = string;
@@ -72,6 +72,30 @@ function u64le(seq: number): Uint8Array {
   return buf;
 }
 
+/**
+ * The chain step, given a payload digest rather than a payload.
+ *
+ * `pledge-verify` needs exactly this: a receipt carries the ledger triple (seq, prev_hash,
+ * payload_sha256) and its entry_hash, but not the payload itself, so it can check that the
+ * triple folds without being able to recompute the digest. Exported so the verifier does not
+ * reimplement the formula — a second copy that drifted would let the verifier agree with a
+ * writer that is wrong, which is the one failure mode this module is built to exclude.
+ */
+export function entryHashFrom(input: {
+  readonly seq: number;
+  readonly prevHash: HashHex;
+  readonly payloadSha256: HashHex;
+}): HashHex {
+  const { seq, prevHash, payloadSha256: digest } = input;
+  if (!isHashHex(prevHash)) {
+    throw new TypeError(`prevHash must be 64 lowercase hex chars, got ${JSON.stringify(prevHash)}`);
+  }
+  if (!isHashHex(digest)) {
+    throw new TypeError(`payloadSha256 must be 64 lowercase hex chars, got ${JSON.stringify(digest)}`);
+  }
+  return sha256Hex(Buffer.from(prevHash, "hex"), Buffer.from(digest, "hex"), u64le(seq));
+}
+
 export interface ComputedEntry {
   readonly seq: number;
   readonly prevHash: HashHex;
@@ -90,19 +114,12 @@ export function computeEntry(input: {
   readonly payload: JsonValue;
 }): ComputedEntry {
   const { seq, prevHash, payload } = input;
-  if (!isHashHex(prevHash)) {
-    throw new TypeError(`prevHash must be 64 lowercase hex chars, got ${JSON.stringify(prevHash)}`);
-  }
   const digest = payloadSha256(payload);
   return {
     seq,
     prevHash,
     payloadSha256: digest,
-    entryHash: sha256Hex(
-      Buffer.from(prevHash, "hex"),
-      Buffer.from(digest, "hex"),
-      u64le(seq),
-    ),
+    entryHash: entryHashFrom({ seq, prevHash, payloadSha256: digest }),
   };
 }
 

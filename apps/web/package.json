@@ -3,6 +3,9 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
+  "exports": {
+    "./lib/*": "./lib/*.ts"
+  },
   "scripts": {
     "dev": "next dev",
     "build": "next build",
@@ -15,6 +18,7 @@
     "@date-fns/tz": "1.5.0",
     "@pledge/db": "workspace:*",
     "@pledge/ledger": "workspace:*",
+    "@pledge/spec": "workspace:*",
     "@react-email/components": "1.0.12",
     "date-fns": "4.4.0",
     "drizzle-orm": "0.45.2",

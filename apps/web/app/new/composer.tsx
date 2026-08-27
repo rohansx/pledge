@@ -5,15 +5,21 @@
  * correct: nothing in this architecture reduces the friction of the commit ritual, and that is
  * the most likely reason the product fails (architecture.md §13).
  *
+ * It submits DSL source, not a form shape. The five templates are a way of writing that source
+ * without learning the grammar — they are not a second, parallel way of saying what done means
+ * — so there is exactly one thing that gets canonicalised, hashed and probed, and the user has
+ * seen it before pressing the button (`./spec-preview.tsx`).
+ *
  * NO FORECAST. The inline "38% chance" while the date picker is open is the behavioural
  * intervention and it is v2 — it needs `calibration_fit`, which does not exist (roadmap.md
  * deferred list). Do not stub it; a fake probability on a product about honest records is
  * worse than none.
  *
  * Validation is `CommitmentInputSchema`, the same object the route handler parses. This pass
- * exists to put messages next to fields; the server's pass is the control.
+ * exists to put messages next to fields; the server's pass is the control, and the server
+ * re-compiles the source rather than trusting anything computed here.
  */
-import { probeKinds, type ProbeKind } from "@pledge/db/types";
+import { compile, getTemplate, isComplete, templateIds, type TemplateId } from "@pledge/spec";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import {
@@ -23,47 +29,51 @@ import {
   type CreatedCommitment,
   type FieldErrors,
 } from "@/lib/commitment-input";
-
-const KIND_LABEL: Record<ProbeKind, string> = {
-  http_status: "A URL returns a status code",
-  github_release_tag: "A GitHub release tag exists",
-};
+import { SpecEditor } from "./spec-editor";
+import { SpecPreview } from "./spec-preview";
 
 /** The reader's zone, read once. The server has no reliable way to infer it (see the schema). */
 function browserTimeZone(): string {
   return Intl.DateTimeFormat().resolvedOptions().timeZone;
 }
 
+const FIRST_TEMPLATE: TemplateId = templateIds[0];
+
 export function Composer() {
   const router = useRouter();
 
   const [claim, setClaim] = useState("");
-  const [kind, setKind] = useState<ProbeKind>("github_release_tag");
-  const [url, setUrl] = useState("https://");
-  const [expectedStatus, setExpectedStatus] = useState("200");
-  const [repo, setRepo] = useState("");
-  const [tagPattern, setTagPattern] = useState("v*");
+  const [templateId, setTemplateId] = useState<TemplateId>(FIRST_TEMPLATE);
+  const [values, setValues] = useState<Readonly<Record<string, string>>>({});
+  /** `null` while the templates are driving. A string once the user took the wheel. */
+  const [raw, setRaw] = useState<string | null>(null);
   const [deadlineDate, setDeadlineDate] = useState("");
   const [errors, setErrors] = useState<FieldErrors>({});
   const [submitting, setSubmitting] = useState(false);
 
   const timeZone = useMemo(browserTimeZone, []);
 
-  const buildInput = () => ({
-    claim,
-    spec:
-      kind === "http_status"
-        ? { kind, url, expectedStatus: Number(expectedStatus) }
-        : { kind, repo, tagPattern },
-    deadlineDate,
-    timeZone,
-  });
+  // One derivation, one source of truth. An unfilled blank expands to a placeholder that does
+  // not parse, so "incomplete" and "invalid" reach the user through the same channel instead
+  // of through a second completeness rule that could disagree with the parser.
+  const source = useMemo(
+    () => raw ?? getTemplate(templateId).expand(values),
+    [raw, templateId, values],
+  );
+  const result = useMemo(() => compile(source), [source]);
+  /** Blanks still to fill. Not an error yet — see SpecPreview's `pending`. */
+  const pending = raw === null && !isComplete(getTemplate(templateId), values);
 
   async function onSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setErrors({});
 
-    const parsed = CommitmentInputSchema.safeParse(buildInput());
+    const parsed = CommitmentInputSchema.safeParse({
+      claim,
+      specSource: source,
+      deadlineDate,
+      timeZone,
+    });
     if (!parsed.success) {
       setErrors(toFieldErrors(parsed.error));
       return;
@@ -78,8 +88,8 @@ export function Composer() {
       });
 
       if (!response.ok) {
-        // The server re-validates; if it disagrees with the client pass, the server is right
-        // and its field errors replace ours.
+        // The server re-validates and re-compiles; if it disagrees with the client pass, the
+        // server is right and its field errors replace ours.
         const body: unknown = await response.json().catch(() => null);
         setErrors(readServerErrors(body));
         return;
@@ -116,91 +126,20 @@ export function Composer() {
         <FieldError errors={errors["claim"]} />
       </label>
 
-      <fieldset className="field">
-        <legend className="field-label">How will it be checked?</legend>
-        <div className="radio-row">
-          {probeKinds.map((k) => (
-            <label key={k} className="radio">
-              <input
-                type="radio"
-                name="kind"
-                value={k}
-                checked={kind === k}
-                onChange={() => {
-                  setKind(k);
-                }}
-              />
-              {KIND_LABEL[k]}
-            </label>
-          ))}
-        </div>
+      <SpecEditor
+        templateId={templateId}
+        values={values}
+        raw={raw}
+        source={source}
+        onTemplate={setTemplateId}
+        onValue={(name, value) => {
+          setValues((current) => ({ ...current, [name]: value }));
+        }}
+        onRaw={setRaw}
+      />
+      <FieldError errors={errors["specSource"]} />
 
-        {kind === "github_release_tag" ? (
-          <>
-            <label className="field">
-              <span className="field-label">Repository</span>
-              <input
-                name="spec.repo"
-                value={repo}
-                onChange={(e) => {
-                  setRepo(e.target.value);
-                }}
-                placeholder="owner/name"
-                spellCheck={false}
-              />
-              <FieldError errors={errors["spec.repo"]} />
-            </label>
-            <label className="field">
-              <span className="field-label">Tag pattern</span>
-              <input
-                name="spec.tagPattern"
-                value={tagPattern}
-                onChange={(e) => {
-                  setTagPattern(e.target.value);
-                }}
-                placeholder="v0.1.*"
-                spellCheck={false}
-              />
-              <span className="field-hint">
-                A glob. <code>*</code> is the only wildcard — not a regular expression.
-              </span>
-              <FieldError errors={errors["spec.tagPattern"]} />
-            </label>
-          </>
-        ) : (
-          <>
-            <label className="field">
-              <span className="field-label">URL</span>
-              <input
-                name="spec.url"
-                type="url"
-                value={url}
-                onChange={(e) => {
-                  setUrl(e.target.value);
-                }}
-                placeholder="https://example.com/changelog"
-                spellCheck={false}
-              />
-              <span className="field-hint">https only.</span>
-              <FieldError errors={errors["spec.url"]} />
-            </label>
-            <label className="field">
-              <span className="field-label">Expected status</span>
-              <input
-                name="spec.expectedStatus"
-                type="number"
-                min={100}
-                max={599}
-                value={expectedStatus}
-                onChange={(e) => {
-                  setExpectedStatus(e.target.value);
-                }}
-              />
-              <FieldError errors={errors["spec.expectedStatus"]} />
-            </label>
-          </>
-        )}
-      </fieldset>
+      <SpecPreview result={result} pending={pending} />
 
       <label className="field">
         <span className="field-label">Deadline</span>
@@ -227,7 +166,7 @@ export function Composer() {
         public.
       </p>
 
-      <button type="submit" disabled={submitting}>
+      <button type="submit" disabled={submitting || !result.ok}>
         {submitting ? "Recording…" : "Put it on the record"}
       </button>
     </form>

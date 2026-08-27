@@ -121,6 +121,11 @@ observation made with the committer's own credentials is not an external observa
 
 `github.release(repo)` resolves to the **latest** release. To pin, use `.tag matches "..."`.
 
+Free-form string arguments — a branch, a login, a workflow file — are restricted to letters,
+digits, space and `. _ - /`. They are concatenated into the evidence key of §6.2 (`+name=value`,
+unescaped), so a `+`, `=`, `,` or `:` inside one would let two different specs name one
+observation. Rejected at parse time, where the author can see it.
+
 ### 3.3 Registries
 
 | Source | Fields |
@@ -188,6 +193,11 @@ readability of long specs.
 
 Supported: `*` (any run of chars), `?` (one char), `[abc]`, `[a-z]`, `{alt1,alt2}`.
 
+There is **no negation**. `[!a]` and `[^a]` are legal, and they mean a class containing a
+literal `!` or `^` — the opposite of the shell reading. Legal is not the same as harmless, so
+the composer emits a `glob_class_negation` warning on either form rather than letting a pattern
+decide a resolution by meaning the reverse of how it reads.
+
 Regex is excluded on purpose:
 
 - ReDoS on attacker-influenced input is a real availability risk, and the input here is a
@@ -220,10 +230,17 @@ Canonicalisation steps, in order:
 3. **Normalise literals.** Integers as JSON numbers with no leading zeros; decimals to
    shortest round-tripping form; versions kept as authored strings (comparison mode is
    recorded as an explicit AST field, not inferred at eval time); strings NFC-normalised.
-4. **Sort commutative operand pairs.** For `and`/`or` only, order the two operands by their
-   own canonical serialisation. This makes `a and b` and `b and a` the same hash. Comparison
-   operands are **not** sorted — `x > 5` and `5 < x` are different ASTs by design, because
-   normalising them would make error messages incomprehensible.
+4. **Flatten and sort commutative runs.** For `and`/`or` only: collapse a maximal run of one
+   operator into a flat list of operands, order that list by each operand's own canonical
+   serialisation, and rebuild it left-associated. `and` and `or` are associative as well as
+   commutative, so neither the order nor the nesting of a run carries meaning — `a and b`,
+   `b and a`, `(a and b) and c`, `a and (b and c)` and `c and a and b` are all one hash. A run
+   stops at an operand of the other kind: the `or` in `a and (b or c)` is one operand of the
+   `and` run, not part of it. Sorting the two operands of each node *pairwise* is not enough —
+   the grammar left-folds, so permuting a three-term run gives `((a and c) and b)` versus
+   `((a and b) and c)`, which no pairwise swap reconciles. Comparison operands are **not**
+   sorted — `x > 5` and `5 < x` are different ASTs by design, because normalising them would
+   make error messages incomprehensible.
 5. **Drop source text.** `dsl_source` is stored for display; it is **not** in the hash. Two
    users who write the same spec with different whitespace share a `done_spec` row.
 6. **Serialise** with RFC 8785 JSON Canonicalisation Scheme.
@@ -239,8 +256,8 @@ Both are property-tested in CI ([`roadmap.md`](../roadmap.md) v1 exit criteria):
 - **Determinism:** `canonicalise(parse(s))` is a fixed point. Re-serialising and re-parsing
   yields byte-identical output.
 - **Semantic injectivity:** two specs that differ in any observable behaviour produce
-  different hashes. Two that differ only in whitespace, operand order under `and`/`or`, or
-  `all()` vs `and` produce the same hash.
+  different hashes. Two that differ only in whitespace, operand order or grouping under
+  `and`/`or`, or `all()` vs `and` produce the same hash.
 
 ---
 

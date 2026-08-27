@@ -414,3 +414,84 @@ button:disabled {
   opacity: 0.5;
   cursor: default;
 }
+
+/* --- composer: the DSL editor and its live preview ---------------------------------- */
+
+textarea.dsl {
+  font: 0.85rem/1.5 var(--mono);
+  padding: 0.6rem;
+  color: var(--fg);
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  resize: vertical;
+}
+
+textarea.dsl:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.link-button {
+  align-self: flex-start;
+  padding: 0;
+  color: var(--accent);
+  background: none;
+  font-size: 0.85rem;
+  text-decoration: underline;
+}
+
+.preview {
+  padding: 0.9rem 1rem;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+
+.preview-title {
+  margin: 0 0 0.5rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.preview-bad .preview-title {
+  color: var(--missed);
+}
+
+.preview-issues {
+  margin: 0;
+  padding-left: 1.1rem;
+  font-size: 0.85rem;
+  color: var(--missed);
+}
+
+.preview-warn {
+  margin: 0.5rem 0 0;
+  font-size: 0.85rem;
+  color: var(--disputed);
+}
+
+.preview-facts {
+  margin: 0.75rem 0 0;
+  font-size: 0.85rem;
+}
+
+.preview-facts div + div {
+  margin-top: 0.5rem;
+}
+
+.preview-facts dt {
+  color: var(--muted);
+}
+
+.preview-facts dd {
+  margin: 0.1rem 0 0;
+}
+
+.hash {
+  font-family: var(--mono);
+  font-size: 0.75rem;
+  word-break: break-all;
+}

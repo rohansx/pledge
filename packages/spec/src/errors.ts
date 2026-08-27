@@ -35,6 +35,12 @@ export const specWarningCodes = [
   "string_version_compare",
   /** `.json(pointer)` has no static type; the comparison is resolved against the observation. */
   "dynamic_json_compare",
+  /**
+   * §4.3: `[!a]` and `[^a]` are a class of `{!,a}` and `{^,a}`, not a negation. Legal, so not
+   * an issue — but it means the opposite of what a shell user reads, which is worth saying out
+   * loud before it decides a resolution.
+   */
+  "glob_class_negation",
 ] as const;
 export type SpecWarningCode = (typeof specWarningCodes)[number];
 

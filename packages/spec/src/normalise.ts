@@ -76,6 +76,32 @@ export function normalisePackage(raw: string): string {
   return lowered;
 }
 
+/**
+ * A free-form string argument: a branch name, a GitHub login, a workflow file.
+ *
+ * These are charset-restricted because they are the only strings that reach a `targetKey`
+ * (keys.ts) in a position where a modifier segment can follow. Modifier segments are built by
+ * bare concatenation — `+name=value`, no escaping — and the key shape is pinned by §6.2, which
+ * wants the key to read back as the accessor a human authored rather than as an escaped blob.
+ * So the separators are kept out of the values instead:
+ *
+ *     github.commits("o/r").by("alice").on_branch("main")
+ *     github.commits("o/r").by("alice+on_branch=main")
+ *
+ * are two specs with two different hashes and would otherwise share ONE targetKey — which means
+ * two leaves inside one spec judged on each other's evidence. A branch name, a login and a
+ * workflow file all have well-defined legal characters, and `+ = , :` are not among them.
+ */
+const KEY_SAFE = /^[A-Za-z0-9._\- /]{1,200}$/;
+
+export function normaliseKeyArgument(raw: string, what = "value"): string {
+  const value = normaliseString(raw, what);
+  if (!KEY_SAFE.test(value)) {
+    fail(`${what} may contain only letters, digits, space and . _ - / — got "${raw}"`);
+  }
+  return value;
+}
+
 const DNS_LABEL = /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$/;
 
 export function normaliseHostname(raw: string): string {

@@ -35,16 +35,16 @@ import {
   sourceDef,
 } from "./catalogue";
 import { type SpecIssue, type SpecWarning, issue } from "./errors";
-import { GlobError, compileGlob } from "./glob";
+import { GlobError, compileGlob, looksLikeGlobNegation } from "./glob";
 import {
   NormaliseError,
   decodeStringLiteral,
   normaliseHostname,
   normaliseJsonPointer,
+  normaliseKeyArgument,
   normalisePackage,
   normalisePath,
   normaliseRepo,
-  normaliseString,
   normaliseUrl,
 } from "./normalise";
 import { parseSemver } from "./version";
@@ -242,6 +242,19 @@ function checkComparison(
     // while the author is looking at it rather than when the probe runs.
     try {
       compileGlob(right.value);
+      // Legal, so not an issue — but `[!a]` is a class of `{!, a}`, which is the opposite of
+      // what anyone who has used a shell reads it as (§4.3 has no negation). A pattern that
+      // quietly means the reverse of what it looks like is a trap worth naming out loud.
+      if (looksLikeGlobNegation(right.value)) {
+        collector.warn({
+          code: "glob_class_negation",
+          message:
+            `"${right.value}" has no negation: §4.3 reads [!…] and [^…] as a character class ` +
+            `containing a literal "!" or "^", not as "any character except".`,
+          offset: at.offset,
+          length: at.length,
+        });
+      }
     } catch (error: unknown) {
       if (!(error instanceof GlobError)) throw error;
       collector.add(issue("bad_argument", error.message, at.offset, at.length));
@@ -611,7 +624,10 @@ function normaliseParam(
         return { type: "string", value: normalisePath(operand.value) };
       case "string":
         if (operand.type !== "string") return bad(`${param.name} must be a string`);
-        return { type: "string", value: normaliseString(operand.value) };
+        // Charset-restricted, not merely NFC-normalised: every `string` param in the catalogue
+        // is a branch, a login or a workflow file, and all three land verbatim in a targetKey
+        // beside a `+name=` modifier segment. See normaliseKeyArgument.
+        return { type: "string", value: normaliseKeyArgument(operand.value, param.name) };
     }
   } catch (error: unknown) {
     if (error instanceof Abort) throw error;

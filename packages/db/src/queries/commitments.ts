@@ -7,17 +7,28 @@
  * handing anyone the gun.
  */
 import { and, desc, eq } from "drizzle-orm";
-import type { Db, DbOrTx } from "../client";
+import type { DbOrTx } from "../client";
 import { appendLedgerEntry } from "./ledger";
 import { account, commitment, doneSpec, type CommitmentRow } from "../schema";
-import { SPEC_VERSION_V0, type DoneSpecV0 } from "../types";
+import { SPEC_VERSION_V0, type StoredDoneSpec } from "../types";
 
 export interface NewCommitment {
   readonly accountId: string;
   readonly claim: string;
-  /** Validated spec and its hash — both from `hashDoneSpec()`, never hand-built. */
-  readonly spec: DoneSpecV0;
+  /**
+   * The validated spec and its hash. Both come from the one thing allowed to produce them for
+   * that era — `hashDoneSpec()` for v0, `compile()` in @pledge/spec for v1 — never hand-built.
+   */
+  readonly spec: StoredDoneSpec;
   readonly doneSpecHash: string;
+  /**
+   * Which era the spec belongs to, written into the row AND into the `commitment_created`
+   * payload from the same variable. Defaults to v0 so every existing caller keeps its meaning.
+   *
+   * Two values, one source: a v1 AST stored under `spec_version = 0` would be handed to the v0
+   * evaluator forever, and the permanent record would claim a promise nobody made.
+   */
+  readonly specVersion?: number;
   /** UTC instant. Resolve the committer's local end-of-day before calling (CLAUDE.md I-9). */
   readonly deadline: Date;
   readonly estimatedDays?: number;
@@ -33,12 +44,22 @@ export interface NewCommitment {
  *
  * `committed_at` and the entry's `created_at` are both left to the column default — Postgres
  * `now()` inside this transaction, never an application clock (CLAUDE.md I-8).
+ *
+ * Takes a `DbOrTx`, not a `Db`, so a caller that needs one more write in the SAME transaction
+ * — apps/web has to enqueue the first probe job there (architecture.md §6.1) — can hand its
+ * own `tx` in and get a savepoint. This is the one writer for a new commitment: a caller that
+ * re-implements the insert + ledger append to get that is a second copy of I-3 and I-4 that
+ * will drift.
  */
-export async function insertCommitment(db: Db, input: NewCommitment): Promise<CommitmentRow> {
+export async function insertCommitment(
+  db: DbOrTx,
+  input: NewCommitment,
+): Promise<CommitmentRow> {
+  const specVersion = input.specVersion ?? SPEC_VERSION_V0;
   return db.transaction(async (tx) => {
     await tx
       .insert(doneSpec)
-      .values({ hash: input.doneSpecHash, ast: input.spec, specVersion: SPEC_VERSION_V0 })
+      .values({ hash: input.doneSpecHash, ast: input.spec, specVersion })
       // Immutable and content-addressed: an existing row with this hash is already exactly
       // this spec. Updating it would be a contradiction, not an optimisation (I-4).
       .onConflictDoNothing();
@@ -62,7 +83,7 @@ export async function insertCommitment(db: Db, input: NewCommitment): Promise<Co
         commitmentId: row.id,
         claim: row.claim,
         doneSpecHash: row.doneSpecHash,
-        specVersion: SPEC_VERSION_V0,
+        specVersion,
         // The ORIGINAL deadline. Every later move is an `amended` entry; this value is what
         // makes "moved twice and landed on time" reconstructible from the chain alone.
         deadline: row.deadline.toISOString(),
@@ -76,7 +97,7 @@ export async function insertCommitment(db: Db, input: NewCommitment): Promise<Co
 
 export interface CommitmentWithSpec {
   readonly commitment: CommitmentRow;
-  readonly spec: DoneSpecV0;
+  readonly spec: StoredDoneSpec;
 }
 
 /** The public profile at /[handle]. Unlisted and private commitments are not public. */

@@ -2,23 +2,27 @@
  * POST /api/v1/commitments — the one write the web tier is allowed to make.
  *
  * INVARIANT I-1. There is no status field anywhere in this file, no `resolvedAt`, and no
- * sibling endpoint that marks something done. `insertCommitment` takes neither, so there is no
- * shape of call from here that reaches `kept` or `missed` — those are written only by the
- * probe worker (architecture.md §5.3). scripts/check-invariants.mjs fails the build if this
- * ever stops being true. If you are here to add a mark-as-done route, the product does not
- * have one.
+ * sibling endpoint that marks something done. Nothing here can reach a resolution status —
+ * those are written only by the probe worker (architecture.md §5.3).
+ * scripts/check-invariants.mjs fails the build if that ever stops being true. If you are here
+ * to add a mark-as-done route, the product does not have one.
  *
- * The flow follows architecture.md §6.1, minus the parts v0 does not have (no DSL parse, no
- * ledger append, no forecast, no baseline snapshot):
+ * The flow follows architecture.md §6.1:
  *
+ *     compile the DSL source     @pledge/spec, the only thing that may produce a spec hash
  *     BEGIN
- *       upsert done_spec        content-addressed, conflicts are expected and ignored
- *       insert commitment       status defaults to 'open', committed_at to Postgres now()
- *       enqueue probe schedule  pg-boss, SAME transaction
+ *       upsert done_spec         content-addressed, conflicts are expected and ignored (I-4)
+ *       insert commitment        status defaults to 'open', committed_at to Postgres now()
+ *       append commitment_created  SAME transaction (I-3)
+ *       enqueue probe schedule   pg-boss, SAME transaction — the first run is also the
+ *                                commit-time baseline capture (done-spec-dsl.md §6.3)
  *     COMMIT
  *     → commit mail, fire and forget, outside the transaction
+ *
+ * NO FORECAST. That is v2 and needs `calibration_fit`, which does not exist.
  */
-import { enqueueProbeJob, getDb, hashDoneSpec, insertCommitment, type Db } from "@pledge/db";
+import { enqueueProbeJob, getDb, insertCommitment } from "@pledge/db";
+import { SPEC_VERSION, compile } from "@pledge/spec";
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import {
@@ -68,28 +72,40 @@ export async function POST(request: Request): Promise<NextResponse> {
     throw error;
   }
 
-  // Re-validates and canonicalises before hashing. The hash IS the contract: an edited spec is
-  // a different hash and therefore a different commitment (CLAUDE.md I-4).
-  const { spec, hash } = hashDoneSpec(input.spec);
+  // Parse, canonicalise, hash — in that order, once, by the package that owns all three
+  // (done-spec-dsl.md §5). The composer ran the same call on the same bytes, so the hash the
+  // committer was shown is the hash that lands. The hash IS the contract: an edited spec is a
+  // different hash and therefore a different commitment (CLAUDE.md I-4).
+  const compiled = compile(input.specSource);
+  if (!compiled.ok) {
+    return NextResponse.json(
+      {
+        error: "invalid commitment",
+        fields: { specSource: compiled.issues.map((issue) => issue.message) },
+      },
+      { status: 400 },
+    );
+  }
+  const spec = compiled.spec;
 
   const db = getDb();
   const created = await db.transaction(async (tx) => {
-    // `insertCommitment` is typed against `Db` because it opens a transaction of its own.
-    // Drizzle turns that into a SAVEPOINT when it is handed an open transaction, which is
-    // what we want: a failing enqueue below rolls the whole thing back. The cast is the
-    // documented boundary — the runtime shapes are identical, only the declared type is
-    // narrower than it needs to be.
-    const row = await insertCommitment(tx as unknown as Db, {
+    // One writer, in @pledge/db, holding I-3 (the ledger append is in this transaction) and
+    // I-4 (done_spec is content-addressed and never updated). Re-implementing it here to get
+    // the enqueue below into the same transaction would be a second copy of both.
+    const row = await insertCommitment(tx, {
       accountId: session.user.accountId,
       claim: input.claim,
-      spec,
-      doneSpecHash: hash,
+      spec: spec.ast,
+      doneSpecHash: spec.hash,
+      specVersion: SPEC_VERSION,
       deadline,
-      estimatedDays: input.estimatedDays,
+      ...(input.estimatedDays === undefined ? {} : { estimatedDays: input.estimatedDays }),
     });
 
     // Same transaction, deliberately unguarded: "job enqueued but commitment rolled back" is
-    // impossible, and so is its mirror image (architecture.md §6.1).
+    // impossible, and so is its mirror image (architecture.md §6.1). The first run is also the
+    // commit-time baseline capture (done-spec-dsl.md §6.3).
     await enqueueProbeJob(tx, row.id);
     return row;
   });

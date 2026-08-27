@@ -31,7 +31,7 @@ import {
   verify,
 } from "node:crypto";
 import type { KeyObject } from "node:crypto";
-import { canonicalJson, type JsonValue } from "./canonical-json";
+import { canonicalJson, type JsonValue } from "./canonical-json.ts";
 
 /** Domain separation. `receipt-format` §3 fixes the receipt one; this is the ledger's. */
 export const LEDGER_SIGNING_CONTEXT = "pledge.ledger.v1";

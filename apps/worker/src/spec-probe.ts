@@ -28,12 +28,12 @@ import {
 import { notObserved, observed, type Timing } from "./probes/result";
 
 /**
- * BLOCKED ON packages/db — see the return note. `probeKinds` and the `probe_run_kind_known`
- * CHECK still admit only the two v0 kinds, so `"spec"` needs one additive migration and one
- * array entry before a v1 run can be written. The cast is the boundary marker, not a
- * workaround: nothing else in this file pretends the value is already legal.
+ * One kind for the whole v1 evaluator: `probe_kind` records WHICH EVALUATOR ran, and a v1 run
+ * is one evaluation of one spec however many sources it touched. Which sources those were is
+ * in the evidence (`observations[]`), where it can be many. Admitted by the
+ * `probe_run_kind_known` CHECK since migration 0002.
  */
-export const SPEC_PROBE_KIND = "spec" as ProbeKind;
+export const SPEC_PROBE_KIND: ProbeKind = "spec";
 
 /**
  * The v1 evidence record (done-spec-dsl.md §6.2), which is `ProbeEvidence` plus the per-source

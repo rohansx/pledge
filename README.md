@@ -2,10 +2,12 @@
 
 **A verifiable record of what you said you'd ship and whether you shipped it.**
 
-**Status: v0 built, not yet deployed** · `pledge.sh` · Rohan Sharma ([@rohansx](https://github.com/rohansx))
+**Status: v0 and v1 built, not yet deployed** · `pledge.sh` · Rohan Sharma ([@rohansx](https://github.com/rohansx))
 
-The loop runs end to end locally: a commitment created through the app is resolved to `kept` by
-a real probe against a real target, with no manual database edits. See
+The whole loop runs end to end locally: a commitment written in the done-spec DSL, witnessed,
+amended, resolved by a real probe against a real target, recorded on a hash-chained ledger, and
+exported as a signed receipt that `pledge-verify` checks in a process holding no credentials —
+with no manual database edits. `pnpm smoke` is that sentence as a script. See
 [`DEVELOPMENT.md`](./DEVELOPMENT.md) to run it, and **Current phase** below for what is and is
 not done.
 
@@ -72,25 +74,29 @@ visibilities). Nothing anywhere should read as if either outcome is settled.
 
 ## Current phase
 
-**v0 — prove the loop** ([`roadmap.md`](./docs/roadmap.md)) is built and green locally.
-Nothing is deployed. Its exit criteria are the definition of done:
+**v0 — prove the loop** and **v1 — make the record real** ([`roadmap.md`](./docs/roadmap.md))
+are both built and green locally. Nothing is deployed.
+
+v0's six criteria are met except the two that need a deployed instance: a Lighthouse SEO score
+on `/[handle]`, and one public commitment made by the author. Both are blocked on deployment,
+not on code.
+
+v1's eight criteria:
 
 | Exit criterion | |
 |---|---|
-| A commitment created through the UI resolves to `kept` from a real probe, zero manual DB edits | met — `pnpm smoke`, against a live target over the real network |
-| A test asserts no route handler can write `status IN ('kept','missed')` | met — `scripts/check-invariants.mjs`, run by both `pnpm build` and `pnpm test` |
-| `@pledge/safe-fetch` rejects `127.0.0.1`, `169.254.169.254`, `10.0.0.1`, `[::1]`, a DNS name resolving private, and a redirect whose third hop is private | met — one test each, plus decimal/octal/IPv4-mapped/NAT64 forms |
-| `/[handle]` is server-rendered, 200s to `curl` with JS disabled, Lighthouse SEO ≥ 90 | SSR half met; **Lighthouse not yet run** — it needs a deployed instance |
-| Deadline arithmetic is correct in `Asia/Kolkata` | met — explicit tests at 23:30 and 00:15 IST across a UTC date boundary |
-| One commitment on the deployed instance, made by the author, publicly visible | **not met** — there is no deployed instance yet |
+| `parse → canonicalise → serialise → parse` is a fixed point for 500 generated specs | met — `packages/spec/test/roundtrip.test.ts`, seeded generator, 500 iterations |
+| Two syntactically different but semantically identical specs share a hash; two semantically different specs never collide | met — `packages/spec/test/canonicalise.test.ts`, a same-meaning corpus and a different-meaning corpus, plus "no two specs in the corpus share a hash" |
+| A verification script walks the chain from genesis and confirms every `entry_hash`, in CI against a seeded DB | met — `pnpm ledger:verify`, its own step in `.github/workflows/ci.yml` after `db:seed` |
+| `UPDATE ledger_entry` and `DELETE FROM ledger_entry` both raise, tested | met — `packages/db/test/grants.test.ts`, as the owner and as both application roles |
+| Killing the worker mid-probe leaves no partial state; a re-run resolves it | met — `apps/worker/src/crash.test.ts`, a forced crash in a child process |
+| A witness who has never visited pledge can attest in one click, and cannot attest twice or after expiry | met — `apps/web/lib/witness.test.ts`; `/w/[token]` reads no session and the attest route accepts no cookie |
+| `npx pledge-verify` validates a real receipt on a machine with no pledge credentials | met locally — `pnpm smoke` step 7 spawns it with every `DATABASE_URL*`, `PLEDGE_*` and `WITNESS_*` variable stripped. **Not yet run on a genuinely foreign machine, and not in CI** |
+| The OG image renders for a kept, a missed, an amended commitment, and a handle with an emoji | met — `apps/web/lib/og-card.test.ts`, one case each, asserting the cards differ rather than merely that they render |
 
-The two open criteria are both blocked on deployment, not on code. Real GitHub OAuth
-credentials and a real Resend key are likewise unexercised: the app boots, renders and
-completes the loop on placeholders by design, so neither has been proven against the real
-service.
-
-Deferred out of v0 and not to be smuggled in: DSL · witnesses · amendments · ledger ·
-calibration · receipts · OG images · cohorts.
+Deferred out of v1 and not to be smuggled in: calibration · the forecast · Merkle checkpoints ·
+Rekor anchoring · inclusion proofs · cohorts · badges · chat notifications · private
+commitments · the public API and PATs.
 
 ---
 
@@ -103,25 +109,31 @@ inferred.
 ```
 pledge/
   apps/
-    web/                  ✓ Next.js — profile, commitment page, composer, /api/v1
-    worker/               ✓ probe worker: pg-boss, sweep, the two v0 probe kinds
+    web/                  ✓ Next.js — profile, commitment page, DSL composer, witnesses,
+                            amendments, OG cards, /api/v1
+    worker/               ✓ probe worker: pg-boss, backoff curve, observation layer,
+                            the spec evaluator and the two v0 probe kinds
     calibration/          ✗ v2 — Python: fit.py, features.py, Dockerfile
   packages/
     db/                   ✓ Drizzle schema + migrations + role grants + shared contracts
+                            + the receipt builder
     safe-fetch/           ✓ @pledge/safe-fetch — SSRF-hardened undici dispatcher
-    spec/                 ✗ v1 — lexer, parser, AST, canonicalise, evaluate
-    ledger/               ✗ v1 — chain append, Merkle, audit path
-    verify/               ✗ v1 — pledge-verify CLI
+    spec/                 ✓ lexer, parser, AST, canonicalise, print, classify, evaluate,
+                            the five templates
+    ledger/               ✓ chain append, canonical JSON, payload schemas, ed25519 signing
+                            (Merkle and audit paths are v2)
+    verify/               ✓ pledge-verify CLI — steps 1-2 of five, no network, no credentials
   scripts/
     check-invariants.mjs  ✓ the build-time no-self-report check
   docs/                   ✓ design documentation
 ```
 
-v0 has **no DSL**. The two probe kinds — `http(url).status` and `github.release(repo).tag` —
-are plain TypeScript functions over a small discriminated union, content-addressed the same
-way a parsed AST will be, so `packages/spec` replaces the union in v1 without a migration.
-The ledger is deliberately absent: it is v1, and the schema is designed so adding it is
-insert-only ([`roadmap.md`](./docs/roadmap.md) v0 anti-goal).
+**Two eras coexist in the data, permanently.** `done_spec.spec_version` pins evaluation
+semantics: a v0 commitment made before the DSL existed is still evaluated by the v0 function
+that existed when it was made, and always will be. There is no migration and no plan for one —
+retroactively reinterpreting what someone promised is the silent redefinition this product
+exists to prevent. The v0 branch in `apps/worker/src/probes/index.ts` is not legacy, it is the
+record.
 
 **Boundary rule:** `packages/spec` may not depend on `packages/db`. The parser and evaluator
 must run in a browser (composer preview) and in the verifier CLI (no database at all). The
@@ -166,9 +178,9 @@ retention), all three of which gate public launch rather than development.
 
 ## Not yet built
 
-v0 runs; everything past it is still design documentation. Not built, and not stubbed for:
-the DSL and parser · witnesses · amendments · the hash-chained ledger · Merkle checkpoints and
-Rekor anchoring · calibration and the forecast · signed receipts and `pledge-verify` · OG
-images · cohorts · badges · chat notifications · private commitments · the public API and PATs.
+v0 and v1 run; everything past them is still design documentation. Not built, and not stubbed
+for: calibration and the forecast · Merkle checkpoints, Rekor anchoring and inclusion proofs
+(`pledge-verify` steps 3-5, which it reports as *not performed*, never as passed) · cohorts ·
+badges · chat notifications · private commitments · the public API and PATs.
 
 Nothing is deployed. Clone it expecting a local loop, not a service.

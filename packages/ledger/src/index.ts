@@ -9,7 +9,7 @@
 // NOT HERE, DELIBERATELY: Merkle trees, audit paths, checkpoints, Rekor. Those are v2 and
 // ADR-0005 is Proposed, not accepted. Building them now is the scope creep the roadmap warns
 // kills the phase.
-export * from "./canonical-json";
-export * from "./chain";
-export * from "./payloads";
-export * from "./signing";
+export * from "./canonical-json.ts";
+export * from "./chain.ts";
+export * from "./payloads.ts";
+export * from "./signing.ts";

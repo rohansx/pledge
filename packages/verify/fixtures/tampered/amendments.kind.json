@@ -1,0 +1,84 @@
+{
+  "format": "pledge.receipt.v1",
+  "issuer": "https://pledge.sh",
+  "commitment": {
+    "id": "01843b2f-1c9a-4a2e-8f30-000000000003",
+    "handle": "rohansx",
+    "claim": "Ship the pledge landing page",
+    "committed_at": "2026-08-25T09:14:22Z",
+    "deadline_original": "2026-08-28T18:29:00Z",
+    "deadline_effective": "2026-09-05T18:29:00Z",
+    "visibility": "public",
+    "cohort_slug": null
+  },
+  "done_spec": {
+    "spec_version": 1,
+    "hash": "sha256:95d1d3f9b31656e0dca29d5e339de94d33428849cde6639788b5adbcf8ca43ee",
+    "source": "github.release(\"rohansx/tethr\").tag matches \"v0.2.*\"",
+    "probe_class": "standard"
+  },
+  "outcome": {
+    "status": "kept",
+    "resolved_at": "2026-09-04T14:21:07Z",
+    "resolved_by": "probe",
+    "days_estimated": 11.4,
+    "days_actual": 10.2,
+    "slip_ratio": 0.895,
+    "unchanged_since_commitment": false,
+    "censored": false
+  },
+  "amendments": [
+    {
+      "kind": "abandoned",
+      "old_value": "2026-08-28T18:29:00Z",
+      "new_value": "2026-09-01T18:29:00Z",
+      "reason": "Upstream API contract changed; the integration needs a rewrite.",
+      "created_at": "2026-08-27T10:02:11Z",
+      "ledger_seq": 84690
+    },
+    {
+      "kind": "deadline_moved",
+      "old_value": "2026-09-01T18:29:00Z",
+      "new_value": "2026-09-05T18:29:00Z",
+      "reason": "Second slip: the rewrite needs review time I did not budget.",
+      "created_at": "2026-08-31T19:40:03Z",
+      "ledger_seq": 84701
+    }
+  ],
+  "evidence": [
+    {
+      "source": "github:release:rohansx/tethr",
+      "observed_at": "2026-09-04T14:21:07Z",
+      "resolved_ip": "140.82.121.6",
+      "status": 200,
+      "headers": {
+        "content-type": "application/json",
+        "etag": "W/\"a1b2\""
+      },
+      "body_sha256": "sha256:e630ef7bfea62c66e9d5c2acfffacb5b919ce69902aa6aa99a728ac45b28f429",
+      "body_bytes": 3312,
+      "matches": [
+        {
+          "op": "matches",
+          "pattern": "v0.2.*",
+          "value": "v0.2.1"
+        }
+      ]
+    }
+  ],
+  "attestations": [],
+  "ledger": {
+    "entry_seq": 84714,
+    "entry_hash": "sha256:9a556ec8d098e18e6048798b83d1587cd9d33356c55c99c656655793b9528b12",
+    "prev_hash": "sha256:f1d95659cc30860cb97f6d83844617686f5c124a761e5634cd887549a6cacebb",
+    "payload_sha256": "sha256:180cf0666908954bada949ac743bb9521bd493142dbeda12ec478a20eb493b2d"
+  },
+  "anchor": null,
+  "anchor_pending": true,
+  "signature": {
+    "alg": "ed25519",
+    "public_key": "MCowBQYDK2VwAyEAxkvv1AWOWbYxRb45MAm4P12odMsHsO7C2m52nLviSyM=",
+    "key_id": "sha256:0fcb8e7c5d8b712f9cf12ef3e65443f4c6050c1efa2f15c487fdf9966e4e0ec5",
+    "value": "Scte38jWgGhUB6Ulc7Pj8mM5dmtPbJ9_ID3fI1hsM_lWwptVwep3LRCoZ4qLa-bM9qOLM0KQ0DsK7__mZEKKDA"
+  }
+}

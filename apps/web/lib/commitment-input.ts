@@ -7,27 +7,36 @@
  * is a convenience, the server-side pass is the control — a second hand-written validator on
  * either side is a divergence waiting to happen.
  *
- * `DoneSpecV0Schema` is reused verbatim from @pledge/db/types rather than restated. That
- * module is types + Zod only and has no Node-only import, so it bundles for the browser
- * (CLAUDE.md I-6). Importing "@pledge/db" here instead would drag postgres.js into the client
- * bundle.
+ * The done-condition travels as DSL SOURCE, not as a parsed shape. Only `@pledge/spec` may
+ * turn source into an AST and an AST into a hash (done-spec-dsl.md §5), so a wire format that
+ * carried a pre-parsed spec would be asking the browser to decide what the user promised and
+ * the server to take its word for it. The server re-compiles from these bytes.
+ *
+ * The bound below is the parser's own `MAX_SOURCE_LENGTH`. It is restated rather than imported
+ * because it is a *transport* limit — the thing that stops a megabyte reaching the parser at
+ * all — and Zod needs it as a number before any parsing happens.
  */
-import { DoneSpecV0Schema } from "@pledge/db/types";
 import { z } from "zod";
 import { isValidTimeZone } from "./deadline";
 
 export const CLAIM_MAX = 280;
+export const SPEC_SOURCE_MAX = 4000;
 
 export const CommitmentInputSchema = z.object({
   /** What the committer says they will do. Prose — the done-spec is what actually decides. */
   claim: z.string().trim().min(3, "Say what you are committing to").max(CLAIM_MAX),
 
   /**
-   * The machine-checkable condition. Content-addressed once hashed, and shown next to every
-   * outcome — a badge whose criterion is not inspectable is the thing pledge replaces
-   * (security.md T-04).
+   * The machine-checkable condition, as done-spec DSL source. Content-addressed once compiled,
+   * and shown next to every outcome — a badge whose criterion is not inspectable is the thing
+   * pledge replaces (security.md T-04).
+   *
+   * Whether it is a LEGAL spec is not asked here. `@pledge/spec` answers that, with a token
+   * offset the composer can point at, and the route handler reports its issues under this same
+   * field key. A `.refine(parse)` bolted on here would be a second gate that can disagree with
+   * the one that produces the hash.
    */
-  spec: DoneSpecV0Schema,
+  specSource: z.string().trim().min(1, "Say what has to be observed").max(SPEC_SOURCE_MAX),
 
   /**
    * A calendar day, not an instant. The committer picks "5 September"; the server resolves it

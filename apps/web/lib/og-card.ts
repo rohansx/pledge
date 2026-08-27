@@ -24,7 +24,8 @@
  * and there is no `gap` inheritance to lean on. Keep the styles literal.
  */
 import { createElement, type ReactElement } from "react";
-import type { CommitmentStatus, DoneSpecV0 } from "@pledge/db/types";
+import type { CommitmentStatus } from "@pledge/db/types";
+import type { StoredSpec } from "./spec-display";
 import { describeSpec } from "./spec-display";
 
 export const OG_WIDTH = 1200;
@@ -113,7 +114,8 @@ export interface CommitmentCardInput {
   readonly handle: string;
   readonly claim: string;
   readonly status: CommitmentStatus;
-  readonly spec: DoneSpecV0;
+  /** Either era of stored spec — see `StoredSpec` in ./spec-display. */
+  readonly spec: StoredSpec;
   /** How many times the deadline moved or the commitment was withdrawn. 0 is the usual case. */
   readonly amendmentCount: number;
 }

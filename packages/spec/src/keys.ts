@@ -8,12 +8,15 @@
  * written — `github.commits:o/r+since=2026-09-01T00:00:00.000Z` reads back as the accessor a
  * human authored (done-spec-dsl.md §6.2 uses exactly this shape).
  *
- * MIRRORS apps/worker/src/observe/keys.ts, byte for byte. That file predates this one and
- * cannot import from here without @pledge/spec first existing, which is the bug this package
- * is being finished to fix; now that it does exist, worker/keys.ts should become a re-export of
- * this module. Until it does, the two must not drift: a key that differs by one character
- * makes every field read unresolvable, which the evaluator would report as `error` — I-7 held,
- * but nothing would ever resolve. There is a test asserting the exact shapes.
+ * This is the ONLY implementation. apps/worker/src/observe/keys.ts is a re-export of this
+ * module and exists only so the observation layer's imports read locally — two implementations
+ * would be free to drift, and a key that differs by one character makes every field read
+ * unresolvable, which the evaluator reports as `error`: I-7 held, and nothing ever resolving.
+ *
+ * A modifier segment is `+name=value`, concatenated with NO escaping, because §6.2 wants a key
+ * that reads back as the accessor a human authored. The values are kept separator-free instead,
+ * at parse time (`normaliseKeyArgument`), and that restriction is what makes this format
+ * injective. Loosening the charset without escaping here lets two specs name one observation.
  */
 import type { Accessor, Field, InstantName, Modifier, Operand, Source } from "./ast";
 
@@ -42,6 +45,10 @@ function operandKey(operand: Operand, instants: Instants): string {
  * Modifiers are keyword arguments, so their authored order is noise and canonicalisation has
  * already sorted them. Sorting again costs nothing and means the key does not depend on having
  * been handed a canonical AST.
+ *
+ * `+`, `=` and `,` are structural here and cannot appear in a value — see normalise.ts's
+ * KEY_SAFE. If that ever stops being true, this function has to escape, and escaping changes
+ * the evidence shape §6.2 pins.
  */
 function modifierKey(modifiers: readonly Modifier[], instants: Instants): string {
   return [...modifiers]

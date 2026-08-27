@@ -9,42 +9,8 @@ import { and, eq, sql } from "drizzle-orm";
 import { payloadSha256 } from "@pledge/ledger";
 import type { Db } from "../client";
 import { appendLedgerEntry, type LedgerTx } from "./ledger";
-import { commitment, doneSpec, probeRun } from "../schema";
-import type { CommitmentStatus, DoneSpecV0, ProbeResult } from "../types";
-
-export interface DueCommitment {
-  readonly id: string;
-  readonly doneSpecHash: string;
-  readonly deadline: Date;
-  readonly committedAt: Date;
-  readonly status: CommitmentStatus;
-  readonly spec: DoneSpecV0;
-}
-
-/**
- * Open commitments, oldest deadline first. Selects exactly the five columns
- * `pledge_probe` is granted on `commitment` — asking for more is a runtime permission error,
- * which is the point of the column-level grant.
- */
-export async function listOpenCommitments(
-  db: Db,
-  limit = 500,
-): Promise<readonly DueCommitment[]> {
-  return db
-    .select({
-      id: commitment.id,
-      doneSpecHash: commitment.doneSpecHash,
-      deadline: commitment.deadline,
-      committedAt: commitment.committedAt,
-      status: commitment.status,
-      spec: doneSpec.ast,
-    })
-    .from(commitment)
-    .innerJoin(doneSpec, eq(doneSpec.hash, commitment.doneSpecHash))
-    .where(eq(commitment.status, "open"))
-    .orderBy(commitment.deadline)
-    .limit(limit);
-}
+import { commitment, probeRun } from "../schema";
+import type { CommitmentStatus, ProbeResult } from "../types";
 
 export interface RecordProbeRunInput {
   readonly commitmentId: string;

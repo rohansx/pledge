@@ -20,5 +20,8 @@
     "postgres": "3.4.9",
     "undici": "8.10.0",
     "zod": "4.4.3"
+  },
+  "devDependencies": {
+    "@pledge/web": "workspace:*"
   }
 }

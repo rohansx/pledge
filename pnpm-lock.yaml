@@ -14,6 +14,9 @@ importers:
       eslint:
         specifier: 10.9.0
         version: 10.9.0
+      pledge-verify:
+        specifier: workspace:*
+        version: link:packages/verify
       prettier:
         specifier: 3.9.6
         version: 3.9.6
@@ -41,6 +44,12 @@ importers:
       '@pledge/db':
         specifier: workspace:*
         version: link:../../packages/db
+      '@pledge/ledger':
+        specifier: workspace:*
+        version: link:../../packages/ledger
+      '@pledge/spec':
+        specifier: workspace:*
+        version: link:../../packages/spec
       '@react-email/components':
         specifier: 1.0.12
         version: 1.0.12(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
@@ -108,15 +117,25 @@ importers:
       zod:
         specifier: 4.4.3
         version: 4.4.3
+    devDependencies:
+      '@pledge/web':
+        specifier: workspace:*
+        version: link:../web
 
   packages/db:
     dependencies:
       '@pledge/ledger':
         specifier: workspace:*
         version: link:../ledger
+      '@pledge/spec':
+        specifier: workspace:*
+        version: link:../spec
       drizzle-orm:
         specifier: 0.45.2
         version: 0.45.2(pg@8.23.0)(postgres@3.4.9)
+      pledge-verify:
+        specifier: workspace:*
+        version: link:../verify
       postgres:
         specifier: 3.4.9
         version: 3.4.9
@@ -151,6 +170,15 @@ importers:
       chevrotain:
         specifier: 11.0.3
         version: 11.0.3
+      zod:
+        specifier: 4.4.3
+        version: 4.4.3
+
+  packages/verify:
+    dependencies:
+      '@pledge/ledger':
+        specifier: workspace:*
+        version: link:../ledger
       zod:
         specifier: 4.4.3
         version: 4.4.3

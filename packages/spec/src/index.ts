@@ -113,7 +113,7 @@ export {
 
 // ---- version comparison and globs, exported because the composer explains them to the user ---
 export { compareSemver, compareVersions, parseSemver, type Semver } from "./version";
-export { GlobError, compileGlob, globMatches, type CompiledGlob } from "./glob";
+export { GlobError, compileGlob, globMatches, looksLikeGlobNegation, type CompiledGlob } from "./glob";
 
 import { canonicalise, hash } from "./canonicalise";
 import { classify, type ProbeClass } from "./classify";

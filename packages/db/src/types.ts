@@ -10,6 +10,7 @@
  * anything Node-only, so it can be pulled into a browser bundle for form validation.
  */
 import { z } from "zod";
+import type { SpecNode } from "@pledge/spec";
 
 // ---------------------------------------------------------------------------------------
 // Commitment status
@@ -48,10 +49,20 @@ export const ProbeOutcomeSchema = z.enum(probeOutcomes);
 export type ProbeOutcome = (typeof probeOutcomes)[number];
 
 // ---------------------------------------------------------------------------------------
-// Probe kinds — v0 has exactly two, hardcoded. No DSL, no parser (roadmap.md v0).
+// Probe kinds
+//
+// The two v0 kinds are hardcoded probes with no parser behind them (roadmap.md v0). They are
+// not legacy and they are never migrated: `spec_version` pins evaluation semantics forever
+// (done-spec-dsl.md §8), so a v0 commitment keeps being evaluated by the v0 function that
+// existed when it was made.
+//
+// `spec` is the v1 kind — one run of a done-spec AST, however many sources it touches. There
+// is deliberately no `spec_http` / `spec_github` split: the probe kind records WHICH EVALUATOR
+// ran, and a v1 run is one evaluation of one spec. Which sources it observed is in the
+// evidence (`observations[]`), where it can be many.
 // ---------------------------------------------------------------------------------------
 
-export const probeKinds = ["http_status", "github_release_tag"] as const;
+export const probeKinds = ["http_status", "github_release_tag", "spec"] as const;
 export const ProbeKindSchema = z.enum(probeKinds);
 export type ProbeKind = (typeof probeKinds)[number];
 
@@ -117,6 +128,20 @@ export type DoneSpecV0 = z.infer<typeof DoneSpecV0Schema>;
 
 /** Pins evaluation semantics. v0 specs always evaluate under v0 rules. */
 export const SPEC_VERSION_V0 = 0 as const;
+
+/**
+ * What `done_spec.ast` can hold, either era.
+ *
+ * Two eras coexist here and always will (done-spec-dsl.md §8): a v0 commitment made before
+ * the DSL existed keeps being evaluated and rendered as what it was. `spec_version` is the
+ * discriminator on the ROW; the two shapes also happen to be disjoint on `kind`, so a reader
+ * holding only the jsonb can still tell them apart.
+ *
+ * TYPE-ONLY import of @pledge/spec, and it must stay that way: pulling the parser in at
+ * runtime would put Chevrotain in every consumer of @pledge/db. The direction is also the
+ * legal one — I-6 forbids spec → db, not db → spec.
+ */
+export type StoredDoneSpec = DoneSpecV0 | SpecNode;
 
 // ---------------------------------------------------------------------------------------
 // Evidence

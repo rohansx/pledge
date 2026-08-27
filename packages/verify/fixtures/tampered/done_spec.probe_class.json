@@ -1,0 +1,67 @@
+{
+  "format": "pledge.receipt.v1",
+  "issuer": "https://pledge.sh",
+  "commitment": {
+    "id": "01843b2f-1c9a-4a2e-8f30-000000000001",
+    "handle": "rohansx",
+    "claim": "v0.2 released with Kaggle T4 autoscaling",
+    "committed_at": "2026-08-25T09:14:22Z",
+    "deadline_original": "2026-09-05T18:29:00Z",
+    "deadline_effective": "2026-09-05T18:29:00Z",
+    "visibility": "public",
+    "cohort_slug": null
+  },
+  "done_spec": {
+    "spec_version": 1,
+    "hash": "sha256:95d1d3f9b31656e0dca29d5e339de94d33428849cde6639788b5adbcf8ca43ee",
+    "source": "github.release(\"rohansx/tethr\").tag matches \"v0.2.*\"",
+    "probe_class": "strong"
+  },
+  "outcome": {
+    "status": "kept",
+    "resolved_at": "2026-09-04T14:21:07Z",
+    "resolved_by": "probe",
+    "days_estimated": 11.4,
+    "days_actual": 10.2,
+    "slip_ratio": 0.895,
+    "unchanged_since_commitment": false,
+    "censored": false
+  },
+  "amendments": [],
+  "evidence": [
+    {
+      "source": "github:release:rohansx/tethr",
+      "observed_at": "2026-09-04T14:21:07Z",
+      "resolved_ip": "140.82.121.6",
+      "status": 200,
+      "headers": {
+        "content-type": "application/json",
+        "etag": "W/\"a1b2\""
+      },
+      "body_sha256": "sha256:e630ef7bfea62c66e9d5c2acfffacb5b919ce69902aa6aa99a728ac45b28f429",
+      "body_bytes": 3312,
+      "matches": [
+        {
+          "op": "matches",
+          "pattern": "v0.2.*",
+          "value": "v0.2.1"
+        }
+      ]
+    }
+  ],
+  "attestations": [],
+  "ledger": {
+    "entry_seq": 84713,
+    "entry_hash": "sha256:027708324a2f35f692564c298432392c72c2a7faf33e36ce57ebb67e490ee3ac",
+    "prev_hash": "sha256:32cf4a1fdd12b1a85e9b58d79306d9fd42e8a99aa40269aa6db161a1216184e1",
+    "payload_sha256": "sha256:e2de8ad86f65078a702091900f54995830b2b3d2cbb986ec703248ff1e39f586"
+  },
+  "anchor": null,
+  "anchor_pending": true,
+  "signature": {
+    "alg": "ed25519",
+    "public_key": "MCowBQYDK2VwAyEAxkvv1AWOWbYxRb45MAm4P12odMsHsO7C2m52nLviSyM=",
+    "key_id": "sha256:0fcb8e7c5d8b712f9cf12ef3e65443f4c6050c1efa2f15c487fdf9966e4e0ec5",
+    "value": "kzPzqyCdlNb6OJKEESayJPnWeVRR2LoIcvCLHKfs2GKPp6lBuSFb_fzQLvv8kScEcNMKYv9VAWc3Wf6PjbMdBA"
+  }
+}

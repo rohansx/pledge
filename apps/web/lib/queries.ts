@@ -10,14 +10,15 @@ import { account, amendment, commitment, doneSpec, getDb, probeRun } from "@pled
 import type {
   AmendmentRow,
   CommitmentRow,
-  DoneSpecV0,
   ProbeRunRow,
 } from "@pledge/db";
 import { asc, desc, eq, inArray } from "drizzle-orm";
+import type { StoredSpec } from "./spec-display";
 
 export interface CommitmentDetail {
   readonly commitment: CommitmentRow;
-  readonly spec: DoneSpecV0;
+  /** Either era of stored spec — see `StoredSpec` in ./spec-display. */
+  readonly spec: StoredSpec;
   readonly handle: string;
   readonly runs: readonly ProbeRunRow[];
   /** Oldest first: the order a history reads in, and the order "moved twice" is legible in. */

@@ -163,6 +163,26 @@ function parseClass(body: string): (readonly [string, string])[] {
   return ranges;
 }
 
+/**
+ * Does this pattern contain a class that *reads* as a shell negation — `[!a]` or `[^a]`?
+ *
+ * §4.3 has no negation, so `[!a]` compiles to a class of `{!, a}`: a pattern that means the
+ * OPPOSITE of what anyone who has used a shell will read it as, silently. Rejecting it would
+ * be a semantic change to spec_version 1 for a pattern that is legal today; warning costs
+ * nothing and puts the surprise in front of the author instead of in the resolution.
+ */
+export function looksLikeGlobNegation(pattern: string): boolean {
+  for (let i = 0; i < pattern.length; i += 1) {
+    if (pattern[i] !== "[") continue;
+    const close = pattern.indexOf("]", i + 1);
+    if (close === -1) return false; // unbalanced; compileGlob rejects it with a real error
+    const first = pattern[i + 1];
+    if (first === "!" || first === "^") return true;
+    i = close;
+  }
+  return false;
+}
+
 export function compileGlob(pattern: string): CompiledGlob {
   if (pattern.length > MAX_PATTERN_LENGTH) {
     throw new GlobError(`glob pattern longer than ${MAX_PATTERN_LENGTH} characters`);
