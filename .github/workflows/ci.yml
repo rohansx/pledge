@@ -66,6 +66,7 @@ jobs:
         run: pnpm check:invariants
 
       - run: pnpm db:migrate
+      - run: pnpm db:queue-init
       - run: pnpm db:seed
 
       - run: pnpm typecheck

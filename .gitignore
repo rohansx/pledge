@@ -42,3 +42,7 @@ test-results/
 # Local db + probe evidence
 *.sqlite
 evidence/
+
+# Next.js 16 auto-generates these per-app; the real agent instructions are the root CLAUDE.md
+apps/web/CLAUDE.md
+apps/web/AGENTS.md

@@ -8,7 +8,8 @@
     "start": "tsx src/index.ts",
     "smoke": "tsx src/smoke.ts",
     "build": "tsc --noEmit",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "queue:init": "tsx src/queue-init.ts"
   },
   "dependencies": {
     "@pledge/db": "workspace:*",

@@ -23,7 +23,8 @@
     "ledger:verify": "pnpm --filter @pledge/db ledger:verify",
     "worker": "pnpm --filter @pledge/worker start",
     "smoke": "pnpm --filter @pledge/worker smoke",
-    "notify": "pnpm --filter @pledge/web notify"
+    "notify": "pnpm --filter @pledge/web notify",
+    "db:queue-init": "pnpm --filter @pledge/worker queue:init"
   },
   "devDependencies": {
     "@types/node": "26.2.0",
