@@ -39,7 +39,7 @@ jobs:
       packages: write
     strategy:
       matrix:
-        app: [api, web]
+        app: [api, web, site]
     steps:
       - uses: actions/checkout@v4
       - uses: docker/setup-buildx-action@v3
@@ -53,7 +53,12 @@ jobs:
           context: .
           file: apps/${{ matrix.app }}/Dockerfile
           push: true
-          build-args: PLEDGE_VERSION=${{ github.sha }}
+          # Every image gets the same arguments; each Dockerfile uses the ones it declares. All are public values.
+          build-args: |
+            PLEDGE_VERSION=${{ github.sha }}
+            PUBLIC_SITE_URL=${{ vars.SITE_URL }}
+            PUBLIC_LOBBY_URL=${{ vars.PUBLIC_LOBBY_URL }}
+            PUBLIC_LOBBY_PROJECT_KEY=${{ vars.PUBLIC_LOBBY_PROJECT_KEY }}
           tags: |
             ghcr.io/${{ github.repository }}-${{ matrix.app }}:${{ github.sha }}
             ghcr.io/${{ github.repository }}-${{ matrix.app }}:main
@@ -75,7 +80,8 @@ jobs:
           DOKPLOY_API_KEY: ${{ secrets.DOKPLOY_API_KEY }}
           DOKPLOY_API_APP_ID: ${{ vars.DOKPLOY_API_APP_ID }}
           DOKPLOY_WEB_APP_ID: ${{ vars.DOKPLOY_WEB_APP_ID }}
+          DOKPLOY_SITE_APP_ID: ${{ vars.DOKPLOY_SITE_APP_ID }}
           PUBLIC_URL: ${{ vars.PUBLIC_URL }}
-          API_IMAGE: ghcr.io/${{ github.repository }}-api:${{ github.sha }}
-          WEB_IMAGE: ghcr.io/${{ github.repository }}-web:${{ github.sha }}
+          SITE_URL: ${{ vars.SITE_URL }}
+          IMAGE_PREFIX: ghcr.io/${{ github.repository }}
           VERSION: ${{ github.sha }}

@@ -1,6 +1,9 @@
 // Point the Dokploy apps at the images just built, deploy them, then prove the new version is the one answering.
 // The smoke test is the source of truth: Dokploy's own status is polled only to fail fast.
-const required = ["DOKPLOY_URL", "DOKPLOY_API_KEY", "DOKPLOY_API_APP_ID", "DOKPLOY_WEB_APP_ID", "API_IMAGE", "WEB_IMAGE", "PUBLIC_URL", "VERSION"];
+const required = [
+  "DOKPLOY_URL", "DOKPLOY_API_KEY", "VERSION", "IMAGE_PREFIX",
+  "DOKPLOY_API_APP_ID", "DOKPLOY_WEB_APP_ID", "DOKPLOY_SITE_APP_ID", "PUBLIC_URL", "SITE_URL",
+];
 const missing = required.filter((name) => !process.env[name]);
 if (missing.length) {
   console.error(`missing environment: ${missing.join(", ")}`);
@@ -9,6 +12,23 @@ if (missing.length) {
 const env = process.env;
 const SMOKE_TIMEOUT_MS = 5 * 60_000; // a first deploy also waits for the TLS certificate
 const POLL_MS = 5_000;
+
+/** Each app, and the URL whose response proves which build is live. */
+const APPS = [
+  { name: "api", id: env.DOKPLOY_API_APP_ID, check: `${env.PUBLIC_URL}/api/healthz`, read: readHealth },
+  { name: "web", id: env.DOKPLOY_WEB_APP_ID, check: `${env.PUBLIC_URL}/version.txt`, read: readText },
+  { name: "site", id: env.DOKPLOY_SITE_APP_ID, check: `${env.SITE_URL}/version.txt`, read: readText },
+];
+
+async function readHealth(response) {
+  const body = await response.json();
+  // The API only counts as live when it can also reach its database.
+  return body?.data?.db === "ok" ? body.data.version : `db ${body?.error ?? "not ok"}`;
+}
+
+async function readText(response) {
+  return (await response.text()).trim().slice(0, 80);
+}
 
 async function dokploy(method, endpoint, payload) {
   const query = method === "GET" ? `?${new URLSearchParams(payload)}` : "";
@@ -23,43 +43,41 @@ async function dokploy(method, endpoint, payload) {
   return text ? JSON.parse(text) : null;
 }
 
-async function deploy(name, applicationId, dockerImage) {
-  await dokploy("POST", "application.saveDockerProvider", { applicationId, dockerImage, username: null, password: null, registryUrl: null });
-  await dokploy("POST", "application.deploy", { applicationId });
-  console.info(`${name}: deploying ${dockerImage}`);
+/** The version each app is serving right now, or why it could not be read. */
+async function live() {
+  const seen = {};
+  for (const app of APPS) {
+    try {
+      seen[app.name] = await app.read(await fetch(app.check, { signal: AbortSignal.timeout(10_000), cache: "no-store" }));
+    } catch (error) {
+      seen[app.name] = `unreachable (${error.cause?.code ?? error.message})`;
+    }
+  }
+  return seen;
 }
 
 async function failedApp() {
-  for (const [name, applicationId] of [["api", env.DOKPLOY_API_APP_ID], ["web", env.DOKPLOY_WEB_APP_ID]]) {
-    const app = await dokploy("GET", "application.one", { applicationId }).catch(() => null);
-    if (app?.applicationStatus === "error") return name;
+  for (const app of APPS) {
+    const state = await dokploy("GET", "application.one", { applicationId: app.id }).catch(() => null);
+    if (state?.applicationStatus === "error") return app.name;
   }
   return null;
 }
 
-/** What is live right now, or the reason it could not be read. */
-async function live() {
-  try {
-    const options = () => ({ signal: AbortSignal.timeout(10_000), cache: "no-store" });
-    const health = await fetch(`${env.PUBLIC_URL}/api/healthz`, options());
-    const body = await health.json();
-    const web = await fetch(`${env.PUBLIC_URL}/version.txt`, options());
-    return { api: body?.data?.version, db: body?.data?.db, apiStatus: health.status, web: (await web.text()).trim().slice(0, 80) };
-  } catch (error) {
-    return { error: error.cause?.code ?? error.message };
-  }
+for (const app of APPS) {
+  const dockerImage = `${env.IMAGE_PREFIX}-${app.name}:${env.VERSION}`;
+  await dokploy("POST", "application.saveDockerProvider", { applicationId: app.id, dockerImage, username: null, password: null, registryUrl: null });
+  await dokploy("POST", "application.deploy", { applicationId: app.id });
+  console.info(`${app.name}: deploying ${dockerImage}`);
 }
-
-await deploy("api", env.DOKPLOY_API_APP_ID, env.API_IMAGE);
-await deploy("web", env.DOKPLOY_WEB_APP_ID, env.WEB_IMAGE);
 
 const deadline = Date.now() + SMOKE_TIMEOUT_MS;
 let seen;
 while (Date.now() < deadline) {
   await new Promise((resolve) => setTimeout(resolve, POLL_MS));
   seen = await live();
-  if (seen.api === env.VERSION && seen.web === env.VERSION && seen.db === "ok") {
-    console.info(`live: api and web at ${env.VERSION}, database ok`);
+  if (APPS.every((app) => seen[app.name] === env.VERSION)) {
+    console.info(`live at ${env.VERSION}: ${APPS.map((app) => app.name).join(", ")}; database ok`);
     process.exit(0);
   }
   const failed = await failedApp();

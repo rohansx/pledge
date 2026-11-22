@@ -11,11 +11,12 @@ on the server. Nothing is deployed to Vercel.
 |---|---|---|
 | API | Dokploy project `pledge`, application `api` | `ghcr.io/rohansx/pledge-api`, port 8080, serves `/api/*` |
 | Dashboard | Dokploy project `pledge`, application `web` | `ghcr.io/rohansx/pledge-web`, nginx serving the Vite build, port 80, serves `/` |
+| Landing page | Dokploy project `pledge`, application `site` | `ghcr.io/rohansx/pledge-site`, nginx serving the Astro build, on `pledge.sh`; `www.pledge.sh` redirects to it |
 | Postgres | Dokploy project `shared-infra`, the shared cluster | Database `pledge`, owned by role `pledge`. One database per project; Pledge runs no Postgres of its own |
 | Auth | Dokploy project `shared-infra`, Keycloak | **On hold.** Not wired to Pledge yet; see below |
-| URL | `https://pledge.187-127-185-75.sslip.io` | Placeholder host with a Let's Encrypt certificate until a real domain is chosen |
+| URLs | `https://pledge.sh` (landing), `https://app.pledge.sh` (dashboard and API) | DNS is on Vercel's nameservers, A records to the Dokploy server. `auth.pledge.sh` is reserved for Keycloak |
 
-Both applications share one host. Traefik routes `/api` to the API and everything else to the
+The dashboard and API share one host. Traefik routes `/api` to the API and everything else to the
 dashboard, so the dashboard calls the API on its own origin and there is no CORS setup.
 
 ## Pipeline
@@ -24,11 +25,11 @@ dashboard, so the dashboard calls the API on its own origin and there is no CORS
 
 1. **test**, on every pull request and every push to `main`: install, typecheck, unit
    tests, build.
-2. **images**, on `main` only: build the API and dashboard images on GitHub runners and push
+2. **images**, on `main` only: build the API, dashboard and landing page images on GitHub runners and push
    them to GHCR, tagged with the commit SHA and `main`. The SHA is baked into each image.
 3. **deploy**, on `main` only: `scripts/deploy.mjs` points each Dokploy application at the
-   SHA-tagged image, triggers the deploy, then polls the public URL until `/api/healthz`
-   and `/version.txt` both report that SHA and the database check passes. If that does not
+   SHA-tagged image, triggers the deploy, then polls the public URLs until `/api/healthz`
+   and each `/version.txt` report that SHA and the database check passes. If that does not
    happen within five minutes, or Dokploy reports a failed deployment, the job fails.
 
 A push that changes only `docs/` or Markdown files does not run the pipeline.
@@ -41,7 +42,8 @@ answering on the public URL and it can reach its database.
 | Name | Kind | Where |
 |---|---|---|
 | `DOKPLOY_URL`, `DOKPLOY_API_KEY` | GitHub Actions secrets | Repository settings |
-| `DOKPLOY_API_APP_ID`, `DOKPLOY_WEB_APP_ID`, `PUBLIC_URL` | GitHub Actions variables | Repository settings |
+| `DOKPLOY_API_APP_ID`, `DOKPLOY_WEB_APP_ID`, `DOKPLOY_SITE_APP_ID`, `PUBLIC_URL`, `SITE_URL` | GitHub Actions variables | Repository settings |
+| `PUBLIC_LOBBY_URL`, `PUBLIC_LOBBY_PROJECT_KEY` | GitHub Actions variables | Baked into the landing page at build time. Publishable values only; the Lobby secret key is never given to the build |
 | `DATABASE_URL`, `PORT` | Runtime environment of the API | Dokploy application `api`, never in git |
 
 The API refuses to start without `DATABASE_URL`.
@@ -74,6 +76,8 @@ added to it.
 ```sh
 pnpm install
 DATABASE_URL=postgres://... pnpm --filter @pledge/api dev   # API on :8080
-pnpm --filter @pledge/web dev                               # dashboard, proxies /api to :8080
+pnpm --filter @pledge/web dev                               # dashboard on :5173, proxies /api to :8080
+PLEDGE_API_URL=https://app.pledge.sh pnpm --filter @pledge/web dev   # same, against the deployed API
+pnpm --filter @pledge/site dev                              # landing page on :4321
 pnpm typecheck && pnpm test
 ```
