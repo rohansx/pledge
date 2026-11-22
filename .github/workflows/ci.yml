@@ -1,0 +1,81 @@
+name: CI and deploy
+
+# Pull requests: test. Pushes to main: test, build images on GitHub runners, deploy to Dokploy, smoke-test.
+on:
+  pull_request:
+  push:
+    branches: [main]
+    paths-ignore: ["docs/**", "**.md"]
+
+permissions:
+  contents: read
+
+# One deploy at a time; a newer push waits rather than racing an older one.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
+      - run: pnpm test
+      - run: pnpm build
+
+  images:
+    if: github.event_name == 'push'
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      matrix:
+        app: [api, web]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/${{ matrix.app }}/Dockerfile
+          push: true
+          build-args: PLEDGE_VERSION=${{ github.sha }}
+          tags: |
+            ghcr.io/${{ github.repository }}-${{ matrix.app }}:${{ github.sha }}
+            ghcr.io/${{ github.repository }}-${{ matrix.app }}:main
+          cache-from: type=gha,scope=${{ matrix.app }}
+          cache-to: type=gha,scope=${{ matrix.app }},mode=max
+
+  deploy:
+    if: github.event_name == 'push'
+    needs: images
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: node scripts/deploy.mjs
+        env:
+          DOKPLOY_URL: ${{ secrets.DOKPLOY_URL }}
+          DOKPLOY_API_KEY: ${{ secrets.DOKPLOY_API_KEY }}
+          DOKPLOY_API_APP_ID: ${{ vars.DOKPLOY_API_APP_ID }}
+          DOKPLOY_WEB_APP_ID: ${{ vars.DOKPLOY_WEB_APP_ID }}
+          PUBLIC_URL: ${{ vars.PUBLIC_URL }}
+          API_IMAGE: ghcr.io/${{ github.repository }}-api:${{ github.sha }}
+          WEB_IMAGE: ghcr.io/${{ github.repository }}-web:${{ github.sha }}
+          VERSION: ${{ github.sha }}

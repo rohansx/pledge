@@ -8,7 +8,8 @@ data against a set of **pledges**: statements about the data that must always ho
 Claude writes the scenarios, the pledges and the planted bugs that prove each pledge can
 fail. Deterministic checks on the app's data decide the verdict. A model never does.
 
-> **Status: proposed design.** Nothing here has been built or measured. The
+> **Status: proposed design.** Only the deploy pipeline and a skeleton API and dashboard
+> exist; nothing in the design has been built or measured. The
 > [open questions](./docs/open-questions.md) list what could change it. The previous
 > product that lived in this repository is archived on the `obsolete` branch.
 
@@ -23,6 +24,7 @@ fail. Deterministic checks on the app's data decide the verdict. A model never d
 | [Data model](./docs/data-model.md) | The seven objects, where each lives, the pledge state machine |
 | [Security](./docs/security.md) | Risks and controls, deployment options, data handling |
 | [Cost and performance](./docs/cost-and-performance.md) | Cost controls and the metrics to instrument from the first scan |
+| [Deployment](./docs/deployment.md) | Where it runs, the build-and-deploy pipeline, what is on hold |
 | [Plan and phases](./docs/plan.md) | Build order, exit criteria per phase, decisions still to make |
 | [Open questions](./docs/open-questions.md) | Unverified assumptions that could change the design |
 

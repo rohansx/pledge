@@ -71,8 +71,8 @@ open-source CLI. The rest is new.
 | Component | Job | Technology | Status |
 |---|---|---|---|
 | GitHub App | Repo access with short-lived tokens, pull request comments | GitHub App | New |
-| API | Accounts, scans, run history, report links | HTTP service with Postgres | New |
-| Dashboard | The founder's view of scans, reports and pledge approval | Vite + TypeScript single-page app, calling the API | New (local dashboard exists) |
+| API | Accounts, scans, run history, report links | Node + TypeScript HTTP service, database on the shared Postgres | Skeleton deployed |
+| Dashboard | The founder's view of scans, reports and pledge approval | Vite + TypeScript single-page app, calling the API | Skeleton deployed |
 | Orchestrator | Queues scans, creates and forks sandboxes, enforces budgets and timeouts | Job queue and workers | New |
 | Agent runner | Runs the Claude loop and exposes tools that act on one sandbox | Anthropic API with tool use | New |
 | Sandbox | One isolated machine per scan | E2B (Firecracker microVM) | Exists as a target option |

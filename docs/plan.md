@@ -20,6 +20,13 @@ flowchart LR
   P4 --> P5["5. Hardening and BYO cloud"]
 ```
 
+## Already in place: the deploy pipeline
+
+Built ahead of the phases so that every later change ships the same way. A skeleton API
+(one health endpoint) and a skeleton dashboard deploy to Dokploy on every push to `main`,
+with images built on GitHub runners and a smoke test against the live URL. See
+[deployment](./deployment.md).
+
 ## Phase 0: Spikes
 
 Answer the questions that decide whether the sandbox design holds at all. Throwaway code.
@@ -88,6 +95,8 @@ Everything up to here runs from a laptop. This phase makes it a service.
 - Orchestrator: queue, sandbox create and fork, budgets, timeouts.
 - API: accounts, scans, run history, report links.
 - Dashboard: a Vite + TypeScript single-page app on top of the API. Not Next.js.
+- Auth: sign-in through the Keycloak instance already running on the Dokploy server. On
+  hold; see [deployment](./deployment.md).
 - Evidence store on object storage, one prefix per customer.
 - Pledge approval flow; approved pledges become a pull request check.
 - Pull request runs: snapshot rebuilt from the stored recipe, diff-scoped scenarios.
@@ -109,8 +118,10 @@ gets a pull request comment on their next change.
 
 The overview leaves these open, so the plan does not assume them:
 
-- Language and framework for the backend components (orchestrator, agent runner, fault
-  proxy, API). The engine is Python. The frontend is decided: Vite + TypeScript.
+- Language for the orchestrator, agent runner and fault proxy. The engine is Python. The
+  frontend is decided: Vite + TypeScript. The API skeleton is Node + TypeScript with no
+  framework; that was a default taken to get the pipeline running, and is cheap to change
+  while it is one endpoint.
 - The dashboard's UI library and where its static files are hosted.
 - Which stack the first base template supports.
 - Which providers get the first hand-written fakes. This needs the design partners named.
