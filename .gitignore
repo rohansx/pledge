@@ -1,5 +1,4 @@
-# Local-only notes — never publish. Do not remove these two lines.
-# NOTES.local.md holds register entries kept out of the public repo (see docs/open-questions.md Q-00).
+# Local-only notes — never publish.
 NOTES.local.md
 *.local.md
 
@@ -16,12 +15,10 @@ out/
 
 # Env / secrets
 .env
-.env.local
-.env.*.local
 .env.*
 !.env.example
 
-# Python (calibration sidecar, v2)
+# Python
 __pycache__/
 *.py[cod]
 .venv/
@@ -29,9 +26,6 @@ venv/
 
 # Test / coverage
 coverage/
-.nyc_output/
-playwright-report/
-test-results/
 
 # Editor / OS
 .DS_Store
@@ -39,10 +33,6 @@ test-results/
 .vscode/*
 !.vscode/extensions.json
 
-# Local db + probe evidence
-*.sqlite
+# Run directories and evidence
+runs/
 evidence/
-
-# Next.js 16 auto-generates these per-app; the real agent instructions are the root CLAUDE.md
-apps/web/CLAUDE.md
-apps/web/AGENTS.md
