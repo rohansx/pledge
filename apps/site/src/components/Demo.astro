@@ -1,0 +1,44 @@
+---
+// Animated walkthrough of one Pledge finding. Driven by src/scripts/demo.ts.
+const lanes = [
+  { name: 'Customer', sub: 'synthetic user' },
+  { name: 'Your app', sub: 'in the sandbox' },
+  { name: 'Database', sub: 'postgres' },
+  { name: 'Payments', sub: 'recording fake' },
+];
+---
+<div class="stage texture">
+  <div class="app glass-dark" id="demo" role="region" aria-label="How Pledge finds a bug, step by step">
+    <div class="app-bar">
+      <div class="dots" aria-hidden="true"><i></i><i></i><i></i></div>
+      <div class="tabs" role="tablist" aria-label="Bug to find">
+        <button class="tab" role="tab" type="button" data-s="0" aria-selected="true">double charge</button>
+        <button class="tab" role="tab" type="button" data-s="1" aria-selected="false">duplicate webhook</button>
+        <button class="tab" role="tab" type="button" data-s="2" aria-selected="false">oversold stock</button>
+      </div>
+      <span class="run-id">step <span id="stepNo">1 / 6</span></span>
+    </div>
+
+    <div class="demo">
+      <div class="seq">
+        <div class="lanes" aria-hidden="true">
+          {lanes.map((l) => <div><b>{l.name}</b><small>{l.sub}</small></div>)}
+        </div>
+        <div class="rows" id="rows" aria-hidden="true"></div>
+        <p class="caption" id="caption" aria-live="polite"></p>
+      </div>
+
+      <aside class="judge">
+        <div class="j-head"><span class="side-h">Pledge</span><span class="badge watching" id="badge">watching</span></div>
+        <div class="p-title q" id="pTitle"></div>
+        <code class="check" id="pCheck"></code>
+        <div class="side-h" id="ledgerH"></div>
+        <div class="ledger" id="ledger"></div>
+        <div class="side-h">Across seeds</div>
+        <div class="seeds" id="seeds" aria-hidden="true"></div>
+        <div class="seed-meta" id="seedMeta"></div>
+        <div class="finding" id="finding"></div>
+      </aside>
+    </div>
+  </div>
+</div>

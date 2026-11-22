@@ -12,6 +12,7 @@ dist/
 build/
 out/
 *.tsbuildinfo
+.astro/
 
 # Env / secrets
 .env
