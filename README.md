@@ -16,9 +16,10 @@ fail. Deterministic checks on the app's data decide the verdict. A model never d
 
 | Doc | What it covers |
 |---|---|
-| [Architecture](./docs/architecture.md) | Design choices, the eleven components, the first-scan and pull-request lifecycles |
+| [Architecture](./docs/architecture.md) | Design choices, the twelve components, the first-scan and pull-request lifecycles |
 | [Agent design](./docs/agent-design.md) | The four Claude phases, the tool set, where pledges come from, guardrails |
 | [Sandbox design](./docs/sandbox-design.md) | E2B template, network rules, fault proxy, fake services, observing data |
+| [Engine boundary](./docs/engine.md) | What Pledge needs from LiteTraffic, what exists, what was added |
 | [Data model](./docs/data-model.md) | The seven objects, where each lives, the pledge state machine |
 | [Security](./docs/security.md) | Risks and controls, deployment options, data handling |
 | [Cost and performance](./docs/cost-and-performance.md) | Cost controls and the metrics to instrument from the first scan |

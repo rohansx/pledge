@@ -86,7 +86,8 @@ Everything up to here runs from a laptop. This phase makes it a service.
 
 - GitHub App with short-lived, single-repo tokens.
 - Orchestrator: queue, sandbox create and fork, budgets, timeouts.
-- API and dashboard: accounts, scans, run history, report links.
+- API: accounts, scans, run history, report links.
+- Dashboard: a Vite + TypeScript single-page app on top of the API. Not Next.js.
 - Evidence store on object storage, one prefix per customer.
 - Pledge approval flow; approved pledges become a pull request check.
 - Pull request runs: snapshot rebuilt from the stored recipe, diff-scoped scenarios.
@@ -108,8 +109,9 @@ gets a pull request comment on their next change.
 
 The overview leaves these open, so the plan does not assume them:
 
-- Language and framework for the new components (orchestrator, agent runner, fault proxy,
-  API). The engine is Python.
+- Language and framework for the backend components (orchestrator, agent runner, fault
+  proxy, API). The engine is Python. The frontend is decided: Vite + TypeScript.
+- The dashboard's UI library and where its static files are hosted.
 - Which stack the first base template supports.
 - Which providers get the first hand-written fakes. This needs the design partners named.
 - Whether the engine is vendored, pinned as a dependency, or developed in this repository.

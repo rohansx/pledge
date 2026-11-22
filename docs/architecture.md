@@ -29,7 +29,8 @@ leave the sandbox.
 flowchart TB
   subgraph CP["Control plane (trusted)"]
     GH["GitHub App"]
-    API["API and dashboard"]
+    DASH["Dashboard (Vite + TypeScript)"]
+    API["API"]
     ORCH["Orchestrator"]
     AGENT["Agent runner (Claude loop + tools)"]
     EVID[("Evidence store")]
@@ -44,6 +45,7 @@ flowchart TB
   end
 
   GH --> ORCH
+  DASH --> API
   API --> ORCH
   ORCH -->|create, snapshot, fork| SB
   AGENT -->|tools scoped to one sandbox| SB
@@ -63,13 +65,14 @@ the fakes' logs to decide whether each pledge was kept.
 
 ## Components
 
-Eleven parts. The engine, its reports and the E2B target option already exist in the
+Twelve parts. The engine, its reports and the E2B target option already exist in the
 open-source CLI. The rest is new.
 
 | Component | Job | Technology | Status |
 |---|---|---|---|
 | GitHub App | Repo access with short-lived tokens, pull request comments | GitHub App | New |
-| API and dashboard | Accounts, scans, run history, report links | Web app with Postgres | New (local dashboard exists) |
+| API | Accounts, scans, run history, report links | HTTP service with Postgres | New |
+| Dashboard | The founder's view of scans, reports and pledge approval | Vite + TypeScript single-page app, calling the API | New (local dashboard exists) |
 | Orchestrator | Queues scans, creates and forks sandboxes, enforces budgets and timeouts | Job queue and workers | New |
 | Agent runner | Runs the Claude loop and exposes tools that act on one sandbox | Anthropic API with tool use | New |
 | Sandbox | One isolated machine per scan | E2B (Firecracker microVM) | Exists as a target option |
@@ -83,6 +86,18 @@ open-source CLI. The rest is new.
 Detail on the parts that carry the most design weight:
 [agent runner](./agent-design.md), [sandbox, fault proxy and fakes](./sandbox-design.md),
 [data model](./data-model.md).
+
+### Frontend: Vite, not Next.js
+
+The dashboard is a client-side single-page app built with Vite and TypeScript. It is static
+files plus calls to the API, so:
+
+- There is no server rendering and there are no framework API routes. Every endpoint lives
+  in the API service.
+- The dashboard holds no secrets. The GitHub token, Anthropic key and sandbox credentials
+  stay behind the API.
+- Reports are evidence files. The dashboard links to them or renders them from the API; it
+  does not generate them.
 
 ## First-scan lifecycle
 
