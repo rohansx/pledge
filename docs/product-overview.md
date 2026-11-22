@@ -1,315 +1,402 @@
 # pledge — Product Overview
 
-**One line:** A verifiable record of what you said you'd ship and whether you shipped it.
+**One-liner:** A verifiable shipping ledger for builders. Say what you'll ship, when. We verify it with receipts, not selfies. Your track record becomes your credential.
 
-**Status:** Concept / pre-build
-**Author:** Rohan Sharma (rohansx)
-**Date:** August 2026
-**Companion doc:** [`technical-spec.md`](./technical-spec.md)
-
-> **Naming note:** this document was originally written under the working name *kept*. The
-> project is now **pledge** (`pledge.sh`). Product substance is unchanged. See
-> [ADR-0009](./adr/0009-name-pledge-over-kept.md) for the rename and the positioning guard
-> that comes with it.
+**Status:** v0 & v1 built (locally); v0.2 → v0.3+ design phase  
+**Author:** Rohan Sharma (rohansx)  
+**Date:** August 2026  
+**Companion docs:** [`technical-spec.md`](./technical-spec.md), [`architecture.md`](./architecture.md), [`calibration.md`](./calibration.md)
 
 ---
 
-## 1. The problem
+## What changed from v0.2 and why
 
-Shipping claims have become unfalsifiable.
+The original pledge (v0.2) focused on a single positioning: an immutable, hash-chained shipping record aimed at *evaluators*—accelerators, fellowship reviewers, hiring managers. It was built to answer one question: *Did this person really ship that, or are they asserting it?* The answer came with cryptographic proof.
 
-In the AI-tooling era, "I shipped a product this weekend" costs nothing to say and almost
-nothing to fake. A screenshot, a landing page, a repo with three commits and a README written
-by a model — all of it looks identical to real execution from the outside.
+The pivot to v0.3 recognizes four changes:
 
-This creates two distinct pains:
+1. **Verification is now tiered.** v0.2 rejected self-reported outcomes entirely ("No self-reported 'I shipped' button. Ever."). Competitors like Beeminder already do machine-verified shipping against deadlines with a stake, live, today. The new model preserves machine verification as the gold tier, but adds peer attestation and a visibly-weaker self-reported tier. This reversal is argued in [ADR-0010](./adr/0010-self-reported-verification-tier.md) (Proposed).
 
-**For builders:** you actually do ship, fast and repeatedly, and you have no artifact that
-proves it. Every fellowship application, every VC intro, every hiring conversation is you
-asserting "I execute quickly" with nothing behind the claim but a GitHub graph that measures
-commits, not outcomes.
+2. **Gamification now includes a leaderboard.** v0.2 explicitly rejected "No leaderboard ranked by volume". The new model adds Calibration Rank (ranked on accuracy, not volume) and quarterly seasons. This reversal is argued in [ADR-0011](./adr/0011-calibration-rank-and-seasons.md) (Proposed).
 
-**For evaluators:** accelerators, fellowship reviewers, hackathon organizers, and hiring
-managers screen on execution speed and follow-through, and currently have no primitive for
-it. They fall back on proxies — Twitter follower counts, HN front-page hits, self-reported
-timelines.
+3. **An LLM now sits in the pledge-creation request path.** v0.2 had no LLM anywhere; ADR-0004 locked Python to nightly. The new Scope Negotiator interviews you at pledge time and converts a fuzzy intention into a checkable contract. This reversal is argued in [ADR-0012](./adr/0012-llm-in-the-pledge-creation-path.md) (Proposed).
 
-The existing accountability category doesn't solve this. StickK-lineage tools rely on an
-honor-system referee, so weeks can pass between quietly giving up and any consequence
-landing. ShipChain-style tools are literally a self-reported "I shipped today" button.
-Beeminder survives precisely because it has a data layer — it pulls from 40+ external
-services rather than trusting the user — but it's built for quantified habits, not discrete
-shipping commitments, and it's aimed at motivation rather than credential.
+4. **The primary paid unit is now the individual builder, not the organizer.** v0.2 called this "the single most important go-to-market decision", reasoning that individuals churn but communities recur. The pivot inverts it: Pro subscriptions for individual builders are primary; team covenants become a gamification feature. This reversal is argued in [ADR-0013](./adr/0013-individual-pro-over-organizer-gtm.md) (Proposed).
 
-**The gap:** nobody is building the *record*. Everyone is building the *nag*.
+All four ADRs record the prior position honestly and argue the tradeoff. This section exists so you know the product did not drift—it pivoted, deliberately.
+
+What survives: the done-spec DSL (now the Scope Negotiator's output), the append-only ledger, evidence bundles, receipts, peer attestation (the existing witness mechanism), SSRF hardening, the error-vs-fail distinction, amendments-not-edits, and the IST/timezone discipline.
 
 ---
 
-## 2. The reframe
+## The problem
 
-pledge is not an accountability app. It is a **credential system for execution.**
+Builders make public commitments constantly ("v1 by Friday", "shipping next month") and there is no system of record for whether they kept them.
 
-The distinction matters enormously for retention. A motivation tool loses value the moment
-motivation dips — which is exactly when users churn, and why this category is a graveyard. A
-track record *compounds*: the longer you use it, the more your profile is worth, and the
-higher the switching cost. You keep using pledge for the same reason you keep using GitHub —
-not because it motivates you, but because leaving means abandoning your history.
+Existing tools fail in three ways:
 
-Positioning line: **GitHub's green squares measure activity. pledge measures follow-through.**
+- **Habit-stake apps** (Forfeit, StickK, Beeminder) verify through photos, GPS, surveillance, or external data integrations. The platform profits when you fail, creating a perverse incentive. They're built for gym habits.
+- **Maker communities** (WIP, Makerlog) are public but self-reported. "Fixed typo" counts the same as "shipped v1". Daily streaks burn users out.
+- **Prediction trackers** (Fatebook) nail calibration but are private, self-resolved, unverified, and disconnected from shipping artifacts.
+
+Nobody has fused: *verified shipping + public ledger + calibration identity*.
+
+**Note:** Beeminder (~50+ machine-verified integrations including GitHub commits and issues-closed) occupies part of this space today. Beeminder is built for recurring quantified goals; pledge is built for discrete shipping commitments and the builder identity that accrues across years of them. They solve different problems and can coexist.
 
 ---
 
-## 3. Core object: the commitment
+## Core concepts
 
-A commitment is a small, immutable, machine-checkable promise:
+### The pledge
+
+A pledge is a small, immutable, machine-checkable promise:
 
 ```
-target:    github.com/rohansx/tethr
-claim:     "v0.2 released with Kaggle T4 autoscaling"
-done when: a GitHub release tagged v0.2.* exists on this repo
-deadline:  2026-09-05T23:59+05:30
-witnesses: @naman, @chris
-stake:     none
+what:      Ship clipxd v1.0 — public repo release + landing page live
+scope:     GitHub release tagged v1.0 on rohansx/clipxd + 
+           landing page returning 200 at clipxd.dev
+deadline:  Sept 15, 2026, 23:59 IST
+confidence: 85%  (the builder's estimate)
+visibility: public
+stake:     reputation-only (v0.1)
 ```
 
 Four properties make it different from a to-do:
 
-1. **Done is defined before the work starts, in machine-checkable terms.** Not "ship tethr
-   v0.2" (vibes) but "a release tag matching `v0.2.*` exists" (a probe).
-2. **The definition of done is immutable once committed.** Its hash goes into the ledger. You
-   cannot quietly redefine success after the fact — the single most common failure mode of
-   self-reported shipping.
-3. **Verification is external.** A probe runs against GitHub, DNS, HTTP, a package registry,
-   or an app store. Optionally a named human co-signs.
-4. **The outcome is permanent.** Misses stay on the record. That is not punishment — it is
-   what makes the kept ones credible. A profile with a 100% hit rate and no history of misses
-   reads as either trivial commitments or a deleted log.
+1. **Done is defined before the work starts, in machine-checkable terms.** Not "ship v1" (vibes) but "a release tag exists + the URL returns 200" (a probe).
+2. **The scope is immutable once published.** Its hash goes into the ledger. You cannot quietly redefine success after the fact.
+3. **Verification is external.** A probe runs against GitHub, DNS, HTTP, a package registry, or a service API. Optionally named peers co-sign.
+4. **The outcome is permanent.** Slips stay on the record. That is not punishment — it is what makes the kept ones credible.
 
----
+### Verification: receipts, not honor system
 
-## 4. The standout feature: calibration
+Every pledge resolves into an evidence bundle with a visible verification tier:
 
-*(Statistical design lives in [`calibration.md`](./calibration.md).)*
+| Tier | How |  Example |
+|---|---|---|
+| **Machine-verified** | Webhook + probe at deadline or on-demand. External state is directly observed. | GitHub release tag exists; HTTP check returns 200 |
+| **Peer-attested** | N named builders co-sign via magic-link; no account required. Weaker by construction, visibly marked. | Three peers attest: "I saw it ship" |
+| **Self-reported** | The committer marks it kept. Zero information — but it is recorded and labelled as such. See [ADR-0010](./adr/0010-self-reported-verification-tier.md) (Proposed). | Used only when external verification is impossible (e.g., a private deployment) |
 
-Most tools score you on a streak — a binary, brittle number that punishes a single bad week
-and gives you nothing to learn from.
+The ledger shows the tier next to every outcome. North-star metric: **% of resolved pledges that are machine-verified** (not a vanity number; it measures our success at being hard to fake).
 
-pledge scores you on **calibration**: how accurate your estimates are, not just whether you
-hit them.
+### The ledger
 
-Every resolved commitment produces one datapoint: *estimated duration vs. actual duration.*
-Across a history, pledge computes a personal slip distribution and surfaces:
+Append-only public record. Every pledge: kept, slipped (with slip duration recorded), or dropped. Nothing deletable after resolution; annotate, never erase. Embeddable badge, profile card, JSON API. The ledger is the product; it gets more valuable with age.
+
+Amendments (moving a deadline) are recorded as separate ledger entries with a reason. Honest revision is allowed; silent revision is not.
+
+### Calibration identity
+
+Keep rate is a weak signal (it depends on what you chose to attempt). The platform computes a **personal calibration curve** instead:
 
 ```
 rohansx · shipping calibration
 
-  on-time rate         74%   (26 of 35)
-  median slip ratio    1.3x
-  p90 slip ratio       2.6x
-  worst category       "integration with third-party API" (2.9x median)
-  best category        "CLI tool, solo, no external deps" (1.0x median)
+on-time rate           74%   (26 of 35 resolved)
+median slip ratio      1.3x
+p90 slip ratio         2.6x
+worst category         "integration with third-party API" (2.9x median)
+best category          "CLI tool, solo, no external deps" (1.0x median)
 
-  You are well-calibrated on solo Rust work and
-  optimistic by ~3x on anything requiring someone else's API.
+self-calibration       well-calibrated (Brier score 0.16 vs 0.25 population)
+difficulty-adjusted    comparable to the population on similarly-scoped work
 ```
 
-Then the feature that makes it a tool rather than a scoreboard — **the forecast**:
+Then the forward-looking feature — **the forecast**:
 
-> You're committing to ship this by **Sept 5** (11 days).
-> Based on 35 prior commitments, that's roughly a **38% chance** of landing on time.
-> Your calibrated 80% date is **Sept 18**.
-> Commit anyway, or move the date?
-
-### Why this is the right feature
-
-**It inverts the shame dynamic that kills this category.** In every existing accountability
-tool, a miss is a failure — it breaks your streak, it costs you money, it goes on the wall of
-shame. Users churn to escape the shame. In pledge, *a miss is a datapoint*. You literally
-cannot have a calibration curve without misses. The product gets more valuable the more
-honest you are about failing, which is an unusual and very durable incentive alignment.
-
-**It converts a nag into an instrument.** Nobody needs another thing telling them to work
-harder. Every technical person alive wants to know their real velocity, and none of them
-know it. Calibration is the first honest answer to "how long does this actually take me?"
-
-**It's the thing an evaluator actually wants.** "This person hits 74% of self-set deadlines
-and slips a median of 1.3x" is a far more useful signal than a streak count, and it is not
-something a candidate can assert about themselves credibly.
-
-**It's technically interesting and hard to clone.** Naive implementations will average slip
-ratios and produce garbage on small samples. Doing it well means a hierarchical Bayesian
-model with partial pooling toward a population prior, so a user with three commitments gets a
-sane forecast that sharpens as data accumulates. That's a real moat over a weekend clone.
-
-**It generates a data flywheel.** Aggregate, anonymized calibration data across thousands of
-commitments is a publishable asset nobody else has: *"Hackathon participants slip 2.4x on
-'integrate payments'. Solo CLI tools are the only category builders estimate accurately."*
-That's a content engine and a recurring reason for press.
-
-**Known weakness, stated honestly:** calibration is gameable by committing to trivial work
-with generous deadlines. Mitigations: display commitment volume and the raw commitment text
-next to the score so a reader can judge scope; require probe complexity above a floor for a
-commitment to count toward calibration; let witnesses flag scope; never show calibration as a
-single context-free number. The unresolved part is [Q-02](./open-questions.md).
+> You're committing to ship by **Sept 15** (11 days).  
+> Your history on release-sized pledges says roughly a **38% chance** of on-time delivery.  
+> Your calibrated 80% date is **Sept 22**.  
+> Commit at 80%, move the date, or re-scope?
 
 ---
 
-## 5. Secondary feature: the portable receipt
+## The standout feature: calibration (two-axis model)
 
-When a commitment resolves, pledge emits a **signed, self-verifying receipt** — a small JSON
-artifact containing the commitment, the done-spec hash, the probe evidence, timestamps, and —
-when the entry has been anchored — a Sigstore/Rekor inclusion proof. Wire format:
-[`spec/receipt-format.md`](./spec/receipt-format.md). An unanchored receipt is a defined state
-(`anchor_pending`), and whether anchoring ships at all is open
-([ADR-0005](./adr/0005-defer-rekor-anchoring.md), Proposed). Without it, "verify without
-trusting pledge" narrows to "verify the signature pledge applied" — a materially weaker claim.
+Calibration is the most technically interesting thing pledge does, and it is the reason builders come back. It is also the thing most likely to be misunderstood, so the model is documented in full in [`calibration.md`](./calibration.md).
+
+**The two axes:**
+
+1. **Duration axis** — *estimated vs. actual slip* — already in v0.2. Models your slip distribution (median, p90, category-specific). Powers the forecast. Feeds the difficulty-adjusted weighting that makes the rank ungameable.
+
+2. **Self-calibration axis** — *confidence vs. outcome* — new in v0.3. For each pledge, you state a probability `p` ("I'm 85% confident"). The outcome is either observed TRUE (kept) or FALSE (missed/dropped). Across your history, a Bayesian hierarchical model estimates your reliability curve — when you say 85%, how often are you right? Produces a Brier score and reads as: "Overconfident in the large", "Extreme estimates are not earned", or "Perfectly calibrated."
+
+The two axes are linked: the duration model already predicts the binary event, so the system computes:
+
+| Quantity | Meaning |
+|---|---|
+| `p` vs outcome | **Self-calibration** — is your confidence in yourself justified? |
+| `p` vs duration forecast | **Overconfidence gap** — scope negotiator coaching line |
+| Duration forecast vs outcome | **Slip** — the original axis, unchanged |
+
+**Calibration Rank** (§3.1 below) ranks on self-calibration, never on slip. It is ungameable: sandbagging (saying 40% for something you'd keep 100%) yields tiny gains; overpromising (saying 95% for something you'd miss 50%) tanks you fast.
+
+**Known weakness, stated honestly:** The binary axis is less censored than the slip axis (you must resolve to contribute a datapoint, but no deadline-slip observations are dropped), which makes it the more defensible thing to attach a public tier to. **BUT** self-reported outcomes are zero-information (the committer chose both `p` and the outcome, so the pair is self-consistent by construction). Self-reported pledges must be excluded from the calibration fit entirely, not merely from rank and the north-star metric. This is mathematically stronger than a product argument and it is falsifiable. [ADR-0010](./adr/0010-self-reported-verification-tier.md) proposes how the tiered model can exist without destroying the guarantee.
+
+---
+
+## Secondary features
+
+### Receipts
+
+When a pledge resolves, pledge emits a **signed, self-verifying receipt** — a small JSON artifact containing the pledge, the done-spec hash, the probe evidence, timestamps, and (when anchored) a Sigstore/Rekor inclusion proof. Wire format: [`spec/receipt-format.md`](./spec/receipt-format.md).
 
 Anyone can verify it *without trusting pledge*:
 
 ```
 $ pledge verify receipt.json
-ok  signature valid (ed25519, key logged to Rekor 2026-09-04T14:22Z)
-ok  inclusion proof valid against Rekor log index 84713221
+ok  signature valid (ed25519)
 ok  done-spec hash matches committed spec (unchanged since 2026-08-25)
-ok  probe evidence: HTTP 200, body sha256 4f2a..., observed 2026-09-04T14:21Z
+ok  probe evidence: GitHub release v1.0 published 2026-09-14T18:42Z
     RESULT: kept, 1 day early
 ```
 
-This is what makes pledge infrastructure rather than a website. A receipt can be dropped into
-a fellowship application, a README badge, an acquisition data room, or a directory listing,
-and verified by a third party who has never heard of pledge. It also means other platforms —
-hackathon organizers, launch directories, accelerator portals — can consume pledge
-attestations instead of competing with them.
+This is what makes pledge infrastructure rather than a website. A receipt can be dropped into a README badge, a fellowship application, an acquisition data room, or a CV, and verified by a third party who has never heard of pledge.
 
-This layer is a direct reuse of the hash-chained-evidence-ledger pattern already proven in
-CloakPipe.
+### Peer attestation
 
----
+Witnesses need no account. At pledge creation you name 2–3 peers; they receive a magic-link, click it once to attest, and are done. No signup, no login. Witnesses are a social obligation, not a support burden — they receive exactly two emails: at commitment and at outcome.
 
-## 6. Distribution: cohorts
-
-Individuals churn. Communities recur. This is the single most important go-to-market decision
-in the document.
-
-pledge's paid unit is not the individual builder — it's the **organizer**. Anyone running a
-time-boxed building event spins up a cohort:
-
-- hackathons (a shared deadline is the entire premise of the format)
-- accelerator and fellowship cohorts
-- build-in-public sprints and "ship 12 things in 12 months" challenges
-- internal engineering teams running a delivery quarter
-- university project cohorts
-
-A cohort gets a shared board, a common deadline, per-participant verified outcomes, and — the
-part organizers actually want — an **automatic, credible post-event report**: how many of N
-teams actually shipped a working artifact, verified by probe rather than by demo-day theatre.
-Right now every hackathon organizer reports "80 projects submitted" with no idea how many
-were real.
-
-Seasonal cohorts mean demand renews itself rather than decaying, which is the structural fix
-for this category's churn problem.
-
-**Pilot:** Mumbai FOSS / Claude Code meetup ship challenge. Dogfood first: the first public
-commitment on pledge should be the commitment to ship pledge.
+This is the existing mechanism in v0.1, now surfaced as a verification tier rather than purely as a social signal.
 
 ---
 
-## 7. What the platform looks like
+## Distribution and identity
 
-**Public profile — `pledge.sh/rohansx`** *(the product's front door and its entire marketing
-engine)*
-Calibration summary at the top, then a reverse-chronological ledger of commitments: claim,
-deadline, outcome, evidence link, verification badge. Misses shown, not hidden.
-Auto-generated OG image so every share renders as a card.
+### Individual builders, not cohorts (primary)
 
-**Commitment composer**
-Plain-language claim → pick a done-spec template (repo release, URL live, package published,
-app store listing, PR merged) → set deadline → the forecast appears inline and challenges the
-date → add witnesses → commit. Under 60 seconds.
+Individuals churn, but a **public track record compounds**. The longer you use pledge, the more your profile is worth, and the higher the switching cost. You keep using it for the same reason you keep using GitHub — not because it motivates you, but because leaving means abandoning your history.
 
-**Live commitment page**
-Countdown, current probe status, progress signals from linked repos, witness list, amendment
-history if any.
+**Public profile** — `pledge.sh/rohansx` — is the product's front door and entire marketing engine. Calibration summary at the top, then a reverse-chronological ledger: claim, deadline, outcome, evidence link, verification badge. Misses shown, not hidden. Auto-generated OG image so every share renders as a card.
 
-**Amendments, not edits**
-You can move a deadline, but the move is recorded as an amendment with a reason and a
-timestamp. Nothing is deleted. The slip is visible. Honest revision is allowed; silent
-revision is not.
+### Calibration Rank
 
-**Cohort board**
-Grid of participants, shared deadline, live verified status, organizer's post-event report
-export.
+**(See [ADR-0011](./adr/0011-calibration-rank-and-seasons.md), Proposed.)**
 
-**Verifier CLI + open receipt format**
-Open source. This is what makes the claim "verifiable" true rather than marketing.
+Rank builders on **self-calibration accuracy, never on volume**. Five tiers:
 
-**Notifications**
-Email + Telegram/WhatsApp. Ping at commit, T-72h, T-12h, and outcome. Witnesses pinged at
-commit and outcome only — they are a social obligation, not a support burden.
+- **Drafter** — <10 resolved pledges or calibration confidence interval too wide to rank meaningfully
+- **Shipper** — 10+ resolved, on-time rate >60%, self-calibrated within 0.2 (Brier score diff)
+- **Calibrated** — 30+ resolved, on-time rate >50% (slip is allowed, accuracy is the gate), perfectly calibrated (Brier score within 0.05 of optimal)
+- **Oracle** — 100+ resolved, Brier Skill Score in top tier (fixed threshold, no percentile ranking), consistent across scope categories
+- **Emeritus** — retired, no new pledges in 90+ days (preserves historical rank, no longer competing)
+
+Explicit anti-patterns excluded: no ranking by volume (encourages spam), no daily check-ins, no streak freezes, no platform-kept forfeits.
+
+### Seasons, not streaks
+
+**(See [ADR-0011](./adr/0011-calibration-rank-and-seasons.md), Proposed.)**
+
+Quarterly cohorts with a leaderboard. Seasonal record resets; the ledger never does. Seasons end streak anxiety ("I missed one deadline, my entire history is ruined") while keeping the competitive element.
 
 ---
 
-## 8. What pledge deliberately does not do
+## Gamification
 
-- **No money stakes at launch.** Financial commitment devices self-select the audience down
-  to near-nothing; users who find stakes motivating stay, everyone else leaves fast. Stakes
-  can be an optional v3 module. They are not the product.
-- **No leaderboard ranked by volume.** Ranking by commitment count rewards spam. Cohort
-  boards are scoped and time-boxed; there is no global ranking.
-- **No streaks.** A streak is a brittle binary that punishes one bad week and teaches
-  nothing. Calibration is strictly better.
-- **No shame wall.** Misses are on your own profile as data, in context, next to your
-  calibration curve. They are not aggregated into a public graveyard.
-- **No self-reported "I shipped" button.** Ever. It is the exact thing that makes every
-  competitor worthless.
+**(See [ADR-0011](./adr/0011-calibration-rank-and-seasons.md), Proposed.)**
+
+Constraints: no daily streaks, no losing mechanics that profit the platform, nothing that rewards volume over accuracy. Everything rewards being right about yourself.
+
+### Ship cards
+
+When a pledge resolves, pledge auto-generates a shareable card:
+
+```
+🚀 Shipped clipxd v1.0
+   scope: GitHub release + landing page live
+   kept · 1 day early
+   verified: GitHub webhook
+   
+   rohansx · on-time rate 74% · 35 total pledges
+   
+   [pledge.sh/rohansx/pledge/12345]
+```
+
+Cards are the growth loop: makers share them, followers see the link to the builder's profile.
+
+### Evidence trophies
+
+Visual distinction for machine-verified resolutions. Self-reported outcomes are never marked with a trophy — they are recorded, visible, and explicitly weaker.
+
+### Slip honesty marks
+
+If you amend a deadline *before* the original deadline passes and the amendment includes a reason ("API integration took longer than expected"), you earn an **"called it early"** mark. Rewards honesty about failure before the deadline hits.
+
+### Duels
+
+Two builders, comparable scope (pledge complexity weighted by AST features), same deadline, head-to-head. Both outcomes recorded, both visible. Low-stakes friendly competition.
+
+### Covenants
+
+A group of 3–8 pledging toward a shared date. Built for study pods, meetup cohorts, and "ship 12 things in 12 months" challenges. Shared board with per-member verified status.
+
+### The graveyard, reframed
+
+Dropped projects get a public archive page with an epitaph, not a wall of shame. Optional "up for adoption" flag so someone else can take it.
 
 ---
 
-## 9. Business model
+## AI-native layer
 
-| Tier | Who | Price | What |
+**(See [ADR-0012](./adr/0012-llm-in-the-pledge-creation-path.md), Proposed.)**
+
+AI's job is contract negotiation and calibration, not nagging.
+
+### Scope Negotiator (flagship)
+
+At pledge creation an LLM interviews you and converts a fuzzy intention into a checkable contract.
+
+User writes: *"ship v1 of clipxd by mid sept"*
+
+LLM returns:
+
+> GitHub release tagged `v1.0` on `rohansx/clipxd` + landing page returning 200 at `clipxd.dev`, both by **Sept 15 23:59 IST**.  
+> Verification: GitHub release webhook + HTTP check.  
+> Your history on release-sized pledges shows a **median 5-day slip**. To hit Sept 15 at your stated 85% confidence, move to **Sept 22**. Or keep Sept 15 at **60% confidence**?
+
+The negotiated spec becomes the verification contract. The DSL lives in the commitment; the spec version pins the evaluator that will execute it.
+
+### Calibration coach
+
+Pre-pledge estimate correction from your own history: "On API-integration work you slip 3x; on CLI work you slip 1.1x."  
+Post-resolution retros: "You said 85%, landed at 87% — you're well-calibrated. But your slip on third-party deps was 2.4x vs your estimate of 1.5x."
+
+### Evidence adjudicator
+
+When webhook evidence is ambiguous (release tagged but deploy failed, or a URL returns 200 but with an old cached build), the model reads the evidence bundle and proposes a resolution with reasoning attached to the ledger entry. Human appeal path on top.
+
+### Agent-readable ledger
+
+MCP server + JSON API so coding agents can read pledge histories and propose commitments on behalf of builders (with explicit consent).
+
+---
+
+## Who it's for
+
+**Primary:** indie hackers and OSS builders who build in public. Ship velocity and public track record are currency.
+
+**Secondary:** build-in-public pods, hackathons, meetup cohorts (covenants). Organizers love automated, credible post-event reports ("12 of 20 teams actually shipped a working artifact, verified by probe").
+
+**Later:** hiring signal for technical recruiting, collaboration signal for open source, fellowship/accelerator screening.
+
+Explicitly NOT for: habits, fitness, generic life goals (use Beeminder). Personal motivation (use a different tool).
+
+---
+
+## Monetization
+
+**(See [ADR-0013](./adr/0013-individual-pro-over-organizer-gtm.md), Proposed.)**
+
+| Tier | Who | What | Price |
 |---|---|---|---|
-| Free | Individual builders | ₹0 | Unlimited commitments, public profile, calibration, receipts, badge |
-| Pro | Serious individuals | ~$5/mo | Private commitments, custom domain profile, API access, deeper calibration breakdowns |
-| Cohort | Event organizers | ~$50–200/event | Cohort board, branded page, participant management, verified post-event report |
-| Org | Teams / accelerators | annual | SSO, private cohorts, portfolio calibration view, data export |
+| **Free** | Individual builders | Unlimited public pledges, public profile, calibration, receipts, ship cards | $0 |
+| **Pro** | Serious individuals | Private pledges, custom domain profile, API access, deeper calibration breakdowns, advanced evidence tiers | ~$5/mo |
+| **Covenant** | Groups / organizers | Shared board for 3–8, co-sign shortcuts, email digest for group outcomes | $15/mo or ~$100/season |
+| **Org** | Teams / accelerators | SSO, private covenants, org-wide calibration view, data export, API quota bump | annual |
 
-The free tier is the growth engine — every public profile is a landing page, every shared
-receipt is a backlink, every cohort brings dozens of new profiles at once.
+The free tier is the growth engine — every public profile is a landing page, every shared card is a backlink, every covenant brings dozens of new profiles at once.
 
-> **Unresolved:** Pro's private commitments, as currently specified, let a user commit
-> privately and publish only the kept ones — which launders the calibration score. See
-> [Q-01](./open-questions.md). Must be settled before Pro ships.
+Private pledges in Pro are gated: once a pledge is published (moved to a specific deadline), it is immutable and counts toward calibration. A user cannot commit privately and publish only the kept ones. (This is an unresolved problem in v0.2's spec and must be settled before Pro ships — see [open-questions.md](./open-questions.md).)
+
+Money stakes, if ever introduced: escrow to charity or a named beneficiary, **never** the platform.
 
 ---
 
-## 10. Risks
+## MVP cut (v0.1)
+
+Ship a tight loop fast:
+
+1. Auth via GitHub; profile = ledger page
+2. Create pledge: scope + deadline + confidence + GitHub verification + HTTP check
+3. Auto-resolution via webhooks; evidence bundle stored and inspectable
+4. Calibration basics: on-time rate, slip stats, simple calibration chart
+5. Ship cards + README badge
+6. Scope Negotiator (single LLM flow at pledge creation)
+
+**Defer:** seasons, duels, covenants, graveyard, dual-axis calibration curves, money, MCP server, private pledges, API, org features.
+
+**North-star metric:** % of resolved pledges that are machine-verified (not self-reported or peer-attested). This is the measure of how hard we are to fake and how much the system actually trusts the ledger.
+
+---
+
+## Known weaknesses
+
+| Weakness | Mitigation |
+|---|---|
+| **Probes are gameable** (a placeholder page also returns 200) | Layer probes with witness co-sign; record response body hashes; require semantic checks; novelty check against commit-time snapshot ([security.md](./security.md) T-04) |
+| **Binary axis is less censored than slip** (you must resolve to observe the outcome, but deadline-slip observations can be right-censored) | Self-reported outcomes are excluded from the calibration fit entirely. Machine-verified and peer-attested outcomes only. [ADR-0010](./adr/0010-self-reported-verification-tier.md) |
+| **Calibration gamed with trivial commitments** | Show volume + raw commitment text alongside score; probe-complexity floor; never a single context-free number; difficulty-weighted rank |
+| **Individual churn** | Credential framing over motivation framing; public track record as switching cost; seasons over streaks |
+| **Nobody actually wants a public failure record** | Private-by-default pledges in Pro; owner chooses visibility, but cannot edit what's already public |
+| **The evaluator side never materializes** | Receipts are useful standalone (README badge, application attachment) even with zero evaluator adoption |
+| **Cold start on calibration** | Population prior via partial pooling; forecast usable from pledge #1 |
+| **Self-selection** (the commit ritual selects for people who already ship) | Likely answer is passive derivation from existing planning artifacts ([open-questions.md](./open-questions.md) Q-04) |
+
+---
+
+## Risks
 
 | Risk | Severity | Mitigation |
 |---|---|---|
-| Probes are gameable (a placeholder page also returns 200) | High | Layer probes with witness co-sign; record response body hashes; require semantic checks; novelty check against commit-time snapshot ([security.md](./security.md) T-04) |
-| Calibration gamed with trivial commitments | High | Show volume + raw commitment text alongside score; probe-complexity floor; never a single context-free number |
-| Individual churn (the category's endemic problem) | High | Cohorts as the primary unit; credential framing over motivation framing |
-| Nobody actually wants a public failure record | Medium | Private-by-default commitments in Pro; owner chooses what's public, but cannot edit what's already public |
-| The evaluator side never materializes | High | Receipts are useful standalone (README badge, application attachment) even with zero evaluator adoption. [Q-03](./open-questions.md) |
-| Cold start on calibration | Medium | Population prior via partial pooling; forecast usable from commitment #1 |
-| The commit ritual self-selects for people who already ship | High | [Q-04](./open-questions.md) — passive derivation from existing planning artifacts |
+| Probes are gameable (placeholder page, throwaway tag) | High | Webhook + semantic checks; novelty check; witness co-sign layer; response body hash stored |
+| Calibration gamed with trivial work | High | Show volume + text; probe-complexity floor; difficulty weighting; never context-free |
+| Vercel/Netlify deploy verification is hard | High | Account webhooks are Pro/Enterprise only on Vercel. Netlify is accessible to all. Fly has no deploy webhooks. Scope negotiator flags this at pledge time |
+| Self-reported tier is abused | High | Excluded from calibration fit; never ranked; visibly marked as weaker |
+| Individual churn (endemic to this category) | High | Credential not motivation; public ledger as switching cost; seasons; covenants as secondary unit |
+| Content-hash stability (CDN edge, A/B, personalization) | High | Use `.text contains` + length floor as assertion; hash only as evidence. Mismatch is a substance observation (fail, not error) |
+| Confidence elicitation bias (social, anchoring) | Medium | Scope Negotiator suggests calibrated date first; builder chooses confidence *after* seeing the suggestion |
+| Timebase ambiguity at deadline boundary | Medium | Mandatory probe scheduled at deadline boundary; no ambiguity window wider than probe interval |
+| "Merged PR closes issues" needs GraphQL | Medium | Worker has no GraphQL client. Would add one call shape, one new `github.pr().closes_issues` field, bumps spec_version |
+| Cold start on a new builder | Medium | Population prior; forecast is usable at n=0 using population params |
 
 ---
 
-## 11. Build order
+## What pledge deliberately does not do
 
-Phases with exit criteria: [`roadmap.md`](./roadmap.md).
+- **No motivation tech.** Not a nag, not a reminder, not a motivational quote. If you need to be reminded to ship, pledge is the wrong product.
+- **No money stakes at launch.** Financial commitment devices self-select down to near-nothing; users who find stakes motivating stay, everyone else leaves fast. Stakes can be an optional v3 module. Not the product.
+- **No daily check-ins.** Designed-in friction from daily login loops.
+- **No streak freezes or skip days.** These are admissions that streaks are the wrong metric; calibration is strictly better.
+- **No shame wall.** Misses are on your own profile as data, in context, next to your calibration curve. They are not aggregated into a public graveyard. (The graveyard is an opt-in epitaph for dropped projects.)
+- **No leaderboard ranked by volume.** Ranking by commitment count rewards spam. Calibration Rank is ranked on accuracy. Seasons are time-boxed. (This is the reversal recorded in [ADR-0011](./adr/0011-calibration-rank-and-seasons.md).)
+- **No platform-kept forfeits.** If a builder stakes money, it goes to charity or a named beneficiary, not to us. We do not profit when they fail.
+- **No passive derivation at launch.** v0.1 requires explicit pledge creation. ([Q-04](./open-questions.md) proposes deriving from calendar, issues, or planning tools; v0.2+.)
 
-- **v0** — commitment object + HTTP/GitHub probe + public profile + email notifications.
-  Dogfood with one real commitment.
-- **v1** — done-spec DSL with templates, witnesses, amendments, hash-chained ledger, OG cards.
-- **v2** — calibration engine + forecast, signed receipts, verifier CLI. Rekor anchoring is
-  scheduled here but **not settled**: [ADR-0005](./adr/0005-defer-rekor-anchoring.md) proposes
-  gating it behind a trigger and is Proposed, not accepted.
-- **v3** — cohorts, organizer reports, badges, public API.
+---
 
-**Open note:** a pre-launch personal/legal clearance remains unresolved and should be closed
-before this or any other side project is publicly launched under your name. Tracked as
-[Q-00](./open-questions.md), with details in the untracked `NOTES.local.md` — it blocks public
-launch, not development.
+## Open problems
+
+These are the things most likely to sink the product. See [`open-questions.md`](./open-questions.md) for details.
+
+- **Q-00:** Prior-inventions disclosure (hard blocker; gates public launch, not development).
+- **Q-01:** Private pledges can't count toward calibration without laundering the score.
+- **Q-02:** Effort-vs-output gap — every probe is satisfiable by something smaller than promised. Novelty checks and semantic templates raise the cost of faking; they don't close the gap.
+- **Q-03:** Evaluator-side adoption — cryptographic verifiability answers "did pledge fabricate this", which nobody is currently asking.
+- **Q-04:** Commit-ritual friction — writing a done-spec before starting work self-selects for people who already ship.
+- **Q-05:** Bad-faith probing — a builder creates pledges on targets they don't control to farm calibration.
+- **Q-06:** Evidence retention — how long to keep webhook bodies, probe logs, intermediate states.
+
+---
+
+## Decisions already made
+
+Do not "improve" these without a new ADR. **New pivots are in ADR-0010..0013 (Proposed); do not assume they are settled.**
+
+| ADR | Decision |
+|---|---|
+| [0001](./adr/0001-typescript-over-rust.md) | TypeScript end to end |
+| [0002](./adr/0002-postgres-for-queue.md) | pg-boss on the same Postgres |
+| [0003](./adr/0003-global-chain-lock.md) | One global advisory lock serialises chain appends |
+| [0004](./adr/0004-python-sidecar-for-calibration.md) | Python exists only for the nightly fit; no request path calls it |
+| [0006](./adr/0006-accountless-witnesses.md) | Witnesses need no account |
+| [0007](./adr/0007-ast-derived-features.md) | Calibration features derived from spec AST, never from user tags |
+| [0009](./adr/0009-name-pledge-over-kept.md) | Name is forward-looking; product is backward-looking |
+| **[0010](./adr/0010-self-reported-verification-tier.md)** | **Proposed:** self-reported tier, excluded from fit |
+| **[0011](./adr/0011-calibration-rank-and-seasons.md)** | **Proposed:** calibration rank, seasonal leaderboard |
+| **[0012](./adr/0012-llm-in-the-pledge-creation-path.md)** | **Proposed:** Scope Negotiator LLM at creation time |
+| **[0013](./adr/0013-individual-pro-over-organizer-gtm.md)** | **Proposed:** individual builders primary, not organizers |
+
+[ADR-0005](./adr/0005-defer-rekor-anchoring.md) (defer Rekor anchoring) and
+[ADR-0008](./adr/0008-calibration-over-all-visibilities.md) (calibrate over all
+visibilities) remain **Proposed, not accepted**. Do not assume either outcome.

@@ -21,6 +21,96 @@ be *killed* by if they resolve badly.
 
 ---
 
+## Q-07 · LLM-generated specs: necessity and safety
+
+**Status:** Open — architectural decision point
+**Blocks:** The Scope Negotiator feature set (optional, non-blocking for v0.1)
+**Owner:** rohansx
+**Raised:** 2026-08
+
+The new direction proposes a Scope Negotiator LLM that converts fuzzy intent into done-specs
+at pledge creation time. Three unresolved questions:
+
+1. **Necessity.** Is the friction reduction worth the added complexity and cost? The builder
+   can always skip the LLM and write a spec manually in 20 characters. Is the LLM a nice-to-have
+   or a must-have for adoption?
+2. **Safety and prompt injection.** The LLM takes builder input and produces an AST that gets
+   committed to the ledger. See [`security.md` T-09](./security.md) for the threat model. The
+   mitigations (parser validation, hashing, visibility) are credible but the surface is new.
+3. **Cost and latency.** Each proposal generation costs money and adds latency to the create
+   flow. Is the cost amortized well (builder skips it often) or does every pledge pay?
+
+**Options:**
+
+| Option | Consequence |
+|---|---|
+| Ship the Scope Negotiator in v1 with optional opt-in | Complexity, cost, new threat surface. Upside: guidance for spec scope and deadline suggestion |
+| Defer to v2, ship v1 without LLM | Simpler MVP, no new threat surface. Builders learn the DSL manually. Risk: friction on first spec |
+| Never ship; require manual specs only | Reduces complexity, eliminates LLM costs and latency. The DSL and templates are the guidance. May impact adoption |
+| Ship as opt-in async (not on the write path) | Reduces latency cost, makes LLM invocations non-blocking. Adds complexity — the proposal comes back async and has to be integrated with the UI |
+
+**Leaning:** Ship in v1 with optional opt-in. The guidance value is real, the threat model
+is credible, and the builder fallback (skip it) is frictionless. Revisit post-launch if
+cost or incident analysis suggests otherwise.
+
+**Decision deadline:** Before v1 development; the decision shapes the compose flow architecture.
+
+---
+
+## Q-08 · Self-reported verification tier: to ship or not
+
+**Status:** Open — recorded as [ADR-0010](./adr/0010-self-reported-verification-tier.md) (proposed)
+**Blocks:** Nothing directly; it is the single biggest change to the core claim if accepted
+**Owner:** rohansx
+**Raised:** 2026-08
+
+The new product direction proposes introducing `self_reported` as a third verification tier,
+where a builder can mark an outcome `kept` or `missed` themselves without a probe. This
+inverts the core invariant of the product (I-1 in [`CLAUDE.md`](../CLAUDE.md)): "no code path
+in apps/web writes kept/missed."
+
+**The case for accepting it:**
+
+- Removes the friction of waiting for a deadline probe. A builder who shipped Friday at 11pm
+  can mark it kept immediately rather than waiting for the 5-minute-interval probe.
+- Captures outcomes that probes cannot see (internal launches, private repos, manual work).
+- Honest: builders know when they shipped; requiring them to lie about it is paternalistic.
+- Mitigations are credible: tier marking, calibration exclusion, visible on the profile.
+
+**The case against:**
+
+- It is an intentional bypass of the entire probe-gaming threat model. The mitigations are
+  social, not technical.
+- A profile of self-reported outcomes is indistinguishable from a profile of outcomes the
+  operator fabricated. The visitor has to trust the tier marking.
+- If adoption of self-reports is high, the north-star metric (`% machine_verified`) becomes
+  meaningless because it reflects platform adoption, not specification quality.
+- A builder can pad their record with self-reports and the product can only offer "they're
+  marked as such" as a counter-argument.
+
+**Calibration argument (from research):** A self-report is not a forecast–outcome pair because
+both forecast and outcome are chosen by the same person. Brier score is undefined by
+construction. Self-reported resolutions must be **excluded entirely from calibration fits**,
+not just from the north-star metric. This is a hard mathematical requirement, not a policy one.
+
+**Options:**
+
+| Option | Consequence |
+|---|---|
+| Accept ADR-0010: ship self-reported tier, visibly marked, excluded from calibration and north-star | Reduces friction, honest (builders report what they know), mitigations are credible. Cost: opens bypass, tier marking may fade or be misinterpreted over time |
+| Reject: no self-reported tier ever | Keeps the absolute invariant. Friction remains: builders have to wait for probes or abandon. Honest about what the product can verify |
+| Compromise: self-reported but *not counted toward calibration*; visible in profile but not in rank or score | Same as option 1. Tier exclusion is what matters; the name doesn't |
+
+**Leaning:** Undecided, honestly. Option 1 solves friction and is mathematically safe (calibration exclusion). Option 2 preserves the core claim. Both are defensible and they are not compatible — the decision forecloses the other.
+
+**Design consequence if accepted:** Calibration rank and the north-star metric are the two places the data from self-reported outcomes could leak into trust. Both must be gated: if a commitment is self-reported, it contributes zero to rank, zero to the metric, zero to the calibration fit. Every code path that reads `verification_tier` must check this value.
+
+**Decision deadline:** Before private commitments carry real data, at the latest v1.5. If accepted
+late, every self-reported outcome on the site has to be retroactively marked, which is a
+credibility event itself.
+
+---
+
 ## Q-00 · Pre-launch personal/legal clearance
 
 **Status:** Open
@@ -336,6 +426,8 @@ policy gate in [`roadmap.md`](./roadmap.md).
 
 | Q | Status | Blocks | Decide by |
 |---|---|---|---|
+| [Q-07](#q-07--llm-generated-specs-necessity-and-safety) | Open | Scope Negotiator feature scope | Before v1 development |
+| [Q-08](#q-08--self-reported-verification-tier-to-ship-or-not) | Open ([ADR-0010](./adr/0010-self-reported-verification-tier.md) proposed) | Core invariant (I-1); north-star metric definition | Before private commitments carry data — v1.5 latest |
 | [Q-00](#q-00--pre-launch-personallegal-clearance) | Open | **Public launch** (hard blocker; development unaffected) | Before the first public artifact — end of v1 |
 | [Q-01](#q-01--the-privatepublic-calibration-denominator) | Open ([ADR-0008](./adr/0008-calibration-over-all-visibilities.md) drafted) | `visibility` column with real data; Pro tier | Before the visibility column ships — v2 |
 | [Q-02](#q-02--can-a-machine-checkable-spec-ever-distinguish-effort-from-output) | Open, structurally | Nothing. Decays into a credibility problem | Before the first embeddable badge |

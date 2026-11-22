@@ -21,19 +21,25 @@ One sentence, because everything below follows from it:
 
 Three consequences, and they are the entire architecture:
 
-1. There is **no write path from a user to their own outcome.** Users write *intent*
-   (commitments, amendments, witness invites). `kept` and `missed` are written only by the
-   probe worker; a witness who is not the committer can push an outcome to `disputed` and
-   nothing else ([ADR-0006](./adr/0006-accountless-witnesses.md)). This is a hard invariant
-   (§5.3).
+1. There is **no write path from a user to their own outcome — with a narrowing proposal.**
+   Users write *intent* (commitments, amendments, witness invites). `machine_verified` and
+   `peer_attested` outcomes are written only by the probe worker and witnesses; a user who is
+   the committer cannot directly produce these ([ADR-0006](./adr/0006-accountless-witnesses.md)).
+   [ADR-0010](./adr/0010-self-reported-verification-tier.md) *proposes* introducing a third
+   tier, `self_reported`, where the builder can mark an outcome themselves — but only if they
+   choose to, and with permanent visibility that they did (§5.3, §6.3). This is a hard
+   invariant today; the narrowing is an explicit proposal.
 2. Anything that determines an outcome runs in a **separate blast radius** from anything that
    holds a session. Probe workers touch untrusted network I/O against attacker-chosen URLs;
    they must not be able to read `account.email` or mint a session.
 3. The record is **append-only and externally anchored**, so "pledge fabricated this" is a
    falsifiable claim rather than a matter of reputation.
+4. **An LLM that proposes specs runs outside the transaction and is optional.** The spec it
+   produces is parsed and hashed by the app tier, so the hash — not the LLM's integrity — is
+   the contract. Manual spec entry bypasses the LLM entirely (§6.1).
 
-Everything that looks like over-engineering below is one of these three. Everything that
-isn't one of these three should be cut — see [ADR-0005](./adr/0005-defer-rekor-anchoring.md)
+Everything that looks like over-engineering below is one of these four. Everything that
+isn't one of these four should be cut — see [ADR-0005](./adr/0005-defer-rekor-anchoring.md)
 for one thing that arguably isn't.
 
 ---
@@ -132,8 +138,8 @@ Four zones. Data crossing inward gets validated; capability crossing outward get
   ─────────────────               ────────────────────         ─────────────────
   probe targets                   authenticated user input     app tier
   witness magic-link callers      GitHub webhook payloads       Postgres
-  unauthenticated readers         OAuth profile data            R2
-  receipt-format consumers
+  unauthenticated readers         inbound deploy webhooks      R2
+  receipt-format consumers        OAuth profile data
                                                                ZONE 3 — sealed
                                                                ─────────────────
                                                                checkpoint signing key
@@ -144,6 +150,14 @@ Four zones. Data crossing inward gets validated; capability crossing outward get
 whitelisted headers. No HTML parsing, no JSON deserialisation of target responses into typed
 objects, no following of `Location` without IP revalidation. GitHub webhooks verify HMAC
 before touching the body. Magic links are single-use, scoped to one `witness.id`, and expire.
+
+**Inbound deploy webhooks (proposed future).** If deploy webhooks are adopted (Vercel,
+Netlify), they enter at the Zone 0 → 1 boundary. They require: HMAC signature verification
+before touching the payload, webhook ID + timestamp revalidation against a non-replayed set,
+and strict parsing that rejects unexpected fields. For v0.1, **deploy events are discovered
+via polling, not pushed webhooks**, because Vercel account webhooks are Pro-only (excluding
+the primary persona) and Fly has no deploy webhook support. Polling is the safe path until
+platform support is uniform.
 
 **Zone 1 → 2 controls.** Every route handler validates with the shared Zod schema before the
 value reaches Drizzle. The DSL is parsed and canonicalised before hashing — a spec that
@@ -185,7 +199,45 @@ retrofitting least privilege never happens.
 ## 5. Data model in depth
 
 Schema is in [`technical-spec.md` §3](./technical-spec.md). What matters here is the
-invariants.
+invariants and the new tier tracking.
+
+**Schema additions for the new direction:**
+
+- `commitment.confidence numeric` — the builder's stated probability estimate (0–100 or 0–1,
+  normalized on write). Elicited at pledge creation, stored immutably.
+- `commitment.verification_tier text` — PROPOSED for ADR-0010. One of `machine_verified`,
+  `peer_attested`, `self_reported`. Set at resolution time, immutable after. Determines
+  whether the outcome enters the calibration fit.
+- `resolution` as a first-class object (or a computed view) — bundles outcome, evidence, and
+  tier. Currently evidence lives scattered across `probe_run.evidence` (jsonb), `probe_run.evidence_blob_key` (R2),
+  and `witness_attestation`. Under the new model this coheres as: a resolved commitment has
+  exactly one `resolution` record capturing outcome + evidence bundle + tier + resolved_at.
+
+**Evidence bundle structure (new):**
+
+```json
+{
+  "kind": "probe_result" | "witness_attestation" | "self_report",
+  "probes": [
+    {
+      "probe_kind": "http_status" | "github_release_tag" | "dns" | ...,
+      "ran_at": "2026-08-30T...",
+      "outcome": "pass" | "fail" | "error",
+      "evidence": { "status": 200, "body_sha256": "...", "matches": [...] },
+      "evidence_blob_key": "r2://...",
+      "duration_ms": 1234
+    }
+  ],
+  "witness_attestations": [
+    {
+      "witness_email": "...",
+      "verdict": "attested" | "disputed",
+      "note": "...",
+      "signed_at": "2026-08-30T..."
+    }
+  ]
+}
+```
 
 ### 5.1 The three-layer object
 
@@ -227,9 +279,9 @@ CREATE TRIGGER ledger_append_only
 The trigger is not paranoia about attackers — it's paranoia about a future migration script
 written at 1am.
 
-### 5.3 The no-self-report invariant
+### 5.3 The no-self-report invariant (current) and self-report tier proposal
 
-The product's core claim is enforced here or nowhere:
+**CURRENT (in force).** The product's core claim is enforced here or nowhere:
 
 ```sql
 ALTER TABLE commitment ADD CONSTRAINT status_transitions_are_earned CHECK (
@@ -246,6 +298,23 @@ Resolution is written exclusively by `probe-worker` and the witness-attestation 
 **Test this directly.** A test that asserts "no route handler can produce a `kept` status"
 is the single highest-value test in the codebase, because it's the one whose failure
 invalidates the entire product rather than one feature.
+
+**PROPOSED NARROWING.** [ADR-0010](./adr/0010-self-reported-verification-tier.md) proposes
+introducing a `verification_tier ∈ {machine_verified, peer_attested, self_reported}` column
+on resolutions. Under this proposal, the no-self-report invariant narrows from an absolute
+to: **`machine_verified` and `peer_attested` resolutions are never written by `pledge_web`.**
+Self-reported resolutions, if introduced, would be:
+
+- Permanently and visibly marked with their tier
+- Excluded from the north-star metric (% machine-verified outcomes)
+- Excluded from calibration fits entirely (a self-report is not a forecast–outcome pair)
+- Excluded from calibration rank
+
+If this ADR is accepted, the `pledge_web` / `pledge_probe` DB role split shifts from
+"no status IN ('kept','missed')" to "no status IN ('kept','missed') with tier in
+('machine_verified', 'peer_attested')". I-1 in [`CLAUDE.md`](../CLAUDE.md) would be
+narrowed accordingly. This change must go through an explicit recorded reversal, not
+silently into code.
 
 ### 5.4 Visibility and the calibration denominator
 
@@ -274,32 +343,47 @@ a credibility event. See [Q-01](./open-questions.md).
 
 ### 6.1 Commit
 
+The flow now has an optional Scope Negotiator step **outside the transaction**:
+
 ```
- composer                web                          postgres
-    │  spec text + date   │                              │
-    ├────────────────────►│ parse (Chevrotain)           │
-    │                     │ canonicalise → sha256        │
-    │                     │ Zod-validate AST             │
-    │                     │ derive features from AST     │
-    │◄─── forecast ───────┤ read calibration_fit, arith. │
-    │  (debounced, no     │                              │
-    │   write yet)        │                              │
-    │                     │                              │
-    │  confirm            │                              │
-    ├────────────────────►│ BEGIN                        │
-    │                     ├─ upsert done_spec ──────────►│
-    │                     ├─ SELECT chain_head FOR UPDATE│
-    │                     ├─ insert commitment ─────────►│
-    │                     ├─ append ledger_entry ───────►│
-    │                     ├─ update chain_head ─────────►│
-    │                     ├─ enqueue probe schedule ────►│ (pg-boss, same txn)
-    │                     ├─ enqueue baseline snapshot ─►│
-    │                     │ COMMIT                       │
-    │◄─── id + forecast ──┤                              │
+ composer        LLM (optional)        web                          postgres
+    │                                    │                              │
+    │ fuzzy intent (free text)           │                              │
+    ├────────────────────────────────────┤ (optional, non-blocking)     │
+    │◄─── proposed spec draft ───────────┤ LLM proposes, user edits     │
+    │ (can skip, write spec manually)    │                              │
+    │                                    │                              │
+    │  spec text + date (chosen by user) │                              │
+    ├────────────────────────────────────►│ parse (Chevrotain)           │
+    │                                    │ canonicalise → sha256        │
+    │                                    │ Zod-validate AST             │
+    │                                    │ derive features from AST     │
+    │◄───────────── forecast ────────────┤ read calibration_fit, arith. │
+    │   (debounced, no write yet)        │                              │
+    │                                    │                              │
+    │  confirm + confidence + deadline   │                              │
+    ├────────────────────────────────────►│ BEGIN                        │
+    │                                    ├─ upsert done_spec ──────────►│
+    │                                    ├─ SELECT chain_head FOR UPDATE│
+    │                                    ├─ insert commitment ─────────►│
+    │                                    │  (with confidence, tier)     │
+    │                                    ├─ append ledger_entry ───────►│
+    │                                    ├─ update chain_head ─────────►│
+    │                                    ├─ enqueue probe schedule ────►│ (pg-boss, same txn)
+    │                                    ├─ enqueue baseline snapshot ─►│
+    │                                    │ COMMIT                       │
+    │◄──────────── id + forecast ────────┤                              │
 ```
 
-Three things worth noticing:
+Four things worth noticing:
 
+- **The Scope Negotiator (LLM) is outside the transaction and optional.** The flow is: fuzzy
+  intent → LLM proposes done-spec AST → web tier parses it (Chevrotain) → user edits → commits.
+  If the user skips the LLM step and writes the spec manually, the flow is unblocked and unchanged.
+  The LLM output is not trusted directly; it is parsed by `packages/spec` and content-addressed,
+  so the hash is the contract, not the LLM's word.
+- **Confidence is elicited and stored immutably at commit time.** Used for self-calibration
+  computation and for the new verification tier model (ADR-0010).
 - **The forecast is computed before any write.** It's a pure function of the AST features and
   the user's stored fit. This is what lets it render while the date picker is open, which is
   the entire behavioural intervention ([`technical-spec.md` §10](./technical-spec.md)).
@@ -346,17 +430,35 @@ time the worker noticed. Someone who ships at 02:00 and gets probed at 03:00 is 
 intervals in the final hour. Be honest in the UI: this is "earliest observed", not "earliest
 true". Copy should say *observed*, never *shipped at*.
 
+**Mandatory deadline probe.** `K` (did the done-condition hold on the deadline?) has ambiguity
+equal to the probe interval if no probe is scheduled exactly at `deadline+0`. A probe 6 hours
+after the deadline cannot answer whether the commitment held at the deadline. **Every open
+commitment must have a probe scheduled at `deadline+0` precisely.** This is not a timing
+preference; it is a requirement for the binary calibration axis to be well-defined.
+
 ### 6.3 Resolve
 
-Three writers can move a commitment out of `open`, and only one of them can produce a success:
+Three + one writers can move a commitment out of `open`, and only the first can produce a
+machine-verified success. Under ADR-0010 (self-reported tier), each resolution records a
+`verification_tier`:
 
-| Writer | Produces | When |
-|---|---|---|
-| `probe-worker` | `kept` | any passing probe |
-| `probe-worker` | `missed` | the authoritative `deadline+0` run **observes false** |
-| `probe-worker` | `disputed` | the target was unobservable at `deadline+0` past the grace window (§8), or the target host is blocklisted ([`security.md`](./security.md) T-07) |
-| witness handler | `disputed` | attestation contradicts probe outcome |
-| amendment handler | `abandoned` | user withdraws, reason required |
+| Writer | Outcome | Tier | When |
+|---|---|---|---|
+| `probe-worker` | `kept` | `machine_verified` | any passing probe |
+| `probe-worker` | `missed` | `machine_verified` | the authoritative `deadline+0` run **observes false** |
+| `probe-worker` | `disputed` | `machine_verified` | the target was unobservable at `deadline+0` past the grace window (§8), or the target host is blocklisted ([`security.md`](./security.md) T-07) |
+| witness handler | `disputed` | `peer_attested` | attestation contradicts probe outcome |
+| witness handler | `kept` | `peer_attested` | (PROPOSED) attestation affirms probe outcome or spec for a commitment with no probe |
+| amendment handler | `abandoned` | — | user withdraws, reason required |
+| user self-report (PROPOSED ADR-0010) | `kept` or `missed` | `self_reported` | user clicks "mark as kept/missed" button; excluded from calibration |
+
+**If self-report tier is accepted:**
+
+- A commitment can only reach `self_reported` status if the builder elects it explicitly.
+- `self_reported` outcomes are **never counted** in the north-star metric (% machine-verified).
+- `self_reported` outcomes are **excluded entirely from calibration fits** — a self-chosen
+  outcome is not a forecast–outcome pair and Brier score is undefined.
+- The UI permanently marks self-reported outcomes with a distinct visual treatment.
 
 `missed` is deliberately *not* produced by intermediate failures — a probe failing at T-48h
 means nothing, and marking it would be the "nag" behaviour the product rejects.
@@ -555,6 +657,15 @@ Stated plainly, because an architecture doc that only lists strengths is marketi
 - **Witness co-sign reintroduces the honor-system referee** that the product criticises in
   StickK. The architecture makes attestations *attributable and permanent*, which is a real
   improvement, but it is not a solution to the same problem by different means.
+- **An LLM in the request path adds a new synchronous third-party dependency** on the write
+  path. Latency, cost, failure modes, and prompt-injection surface are all real costs. The
+  Scope Negotiator is specified as outside the transaction and optional (manual entry bypasses
+  it), which bounds the risk — but this is a genuine architectural debt. See [`security.md`](./security.md)
+  T-09 (new).
+- **Self-reported resolutions (if ADR-0010 is accepted) are a bypass of the entire probe-gaming
+  threat model.** The cost is that self-reported outcomes must be permanently marked, excluded
+  from calibration and the north-star metric, and rendered with distinct visual treatment. But
+  they are a bypass nonetheless. See [`security.md`](./security.md) T-04 update.
 - **Cryptographic verifiability answers "did pledge fabricate this", which nobody is
   currently asking.** The trust question in the field is "does this probe mean anything." The
   ledger is correct engineering aimed slightly to the left of the actual doubt.

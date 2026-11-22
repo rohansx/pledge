@@ -90,8 +90,11 @@ commitment(id uuid pk,
            committed_at timestamptz,
            deadline timestamptz,
            estimated_days numeric,
+           confidence numeric,      -- NEW: builder's stated probability (0–100 or 0–1)
            visibility text,        -- public | unlisted | private
            status text,            -- open | kept | missed | abandoned | disputed
+           verification_tier text, -- NEW (ADR-0010 proposal): machine_verified | 
+                                    -- peer_attested | self_reported
            resolved_at timestamptz null,
            actual_days numeric null,
            slip_ratio numeric null)
@@ -199,8 +202,11 @@ under the rules in force when they were made.
 ## 5. Probe engine
 
 **Scheduling.** Backoff curve per open commitment: daily until T-72h, hourly until T-6h,
-every 5 minutes in the final hour, one authoritative run at deadline+0. Plus opportunistic
-runs on GitHub webhook events.
+every 5 minutes in the final hour, one authoritative run at deadline+0. GitHub webhooks
+trigger opportunistic probes (e.g., a release event immediately triggers a `github.release()`
+check). **Deploy webhooks (Vercel, Netlify) are polled, not pushed, for v0.1** — Vercel
+account webhooks are Pro-only (excluding the primary persona), Fly has no deploy webhooks,
+and Netlify supports all plans. Polling is the safe path until platform support is uniform.
 
 ```ts
 // worker.ts — pg-boss handles locking, retries, and backoff
@@ -358,6 +364,55 @@ const calibratedDate = addDays(committedAt,
 
 **Recency weighting:** exponential decay, ~9-month half-life. People do get better at
 estimating.
+
+---
+
+## 7.5. The Scope Negotiator (LLM on the commit path)
+
+**Purpose:** At pledge creation, convert a fuzzy builder intent ("ship v1 of clipxd by mid
+September") into a checkable contract (spec + date + confidence). The LLM proposes, the
+builder refines, the app parses and commits. This is **not** a general-purpose coding LLM;
+it is a scoped contract negotiator.
+
+**Architecture — outside the transaction and optional:**
+
+```
+1. Builder writes intent → LLM generates proposed spec AST
+2. App tier: Chevrotain parses the LLM output (NOT trusted directly)
+3. Builder previews + edits the spec
+4. On confirm: parse again (Chevrotain), canonicalise, hash
+5. Commit the hash to the ledger
+```
+
+The LLM output is **parsed before it is stored** — if the parse fails, the proposal is
+rejected and the builder is told to edit it. A re-parse at commit time ensures the hash
+corresponds to a valid spec. The invariant is: **the hash is the contract, not the LLM's
+word.** Two LLM outputs that parse to the same AST hash to the same commitment.
+
+**Failure modes and surfaces:**
+
+| Failure | Mitigation |
+|---|---|
+| LLM latency on create | Proposal generation is debounced; builder can skip the LLM and write manually |
+| LLM cost | Cost per proposal is bounded; the builder only pays if they accept (opt-in, not forced) |
+| LLM unavailable | Manual spec entry is always available and unblocked |
+| Prompt injection (craft an intent to make the LLM emit a trivial spec) | Parser validates the AST shape before storing; a trivial spec hashes to the same hash as any other trivial spec. Visible on the profile. Ranked lower in calibration if the class taxonomy is applied ([ADR-0007](./adr/0007-ast-derived-features.md)) |
+| Prompt injection (steer the LLM to propose a large-scope spec on purpose to then trivially satisfy it) | Same as above: visible, hashed, ranked by class |
+| Prompt injection (extract user data from the system prompt) | System prompt is read-only; the LLM sees only the builder's own statement, history, and calibration cues. It has no database access, no way to access other builders' data |
+
+**Calibration coaching (optional post-resolution):**
+
+After a commitment resolves, a second LLM call can synthesize the builder's own history:
+"On pledges your size with a third-party API, you historically slip 5.2 days. Your last
+three releases slipped 4, 3, 2 days — you are improving. For pledges this size going
+forward, assume 4.5 days and add that to your date, or keep the date and lower your
+confidence from 80% to 62%." This is purely advisory and happens async after resolution,
+not on the write path.
+
+**Design rule:** The LLM is a convenience, not a guard. A manually-written spec with an
+LLM-quality proposal beats an LLM-generated spec the builder did not review. The fastest
+path to a commitment is: skip the LLM, write a 20-character spec, commit. The LLM is the
+path for builders who want guidance on scope or deadline.
 
 ---
 

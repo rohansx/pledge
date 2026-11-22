@@ -1,42 +1,238 @@
 # pledge — Roadmap and Phases
 
-**Version:** 1.0
+**Version:** 2.0
 **Date:** August 2026
-**Depends on:** [`technical-spec.md` §12](./technical-spec.md),
-[`architecture.md`](./architecture.md)
+**Status:** v0 and v1 complete locally (commit 8cc6f1b). Phases below are FORWARD from current state.
 
-The technical spec has a four-row estimate table. This document turns it into phases with
-**deliverables, exit criteria, and an explicit deferred list** — because the failure mode of
-a spec this complete is that v2 features leak into v0 and nothing ships.
+The v0.1 MVP design (new direction, August 2026) recuts the product line for public launch.
+v0 and v1 are built and green; the phases below map what ships first and what remains.
+
+**These four phases themselves should be the first four public commitments on pledge**. Commit
+to the p50, publish the p80, and let the record settle the argument.
 
 ---
 
 ## 0. How to read the estimates
 
-The spec estimates v0=2d, v1=1w, v2=2w, v3=2–3w. Those are **p50 estimates by an optimistic
-estimator on greenfield work with novel components**, which is the single most reliably
-underestimated category there is.
+v0 (2d est., shipped) and v1 (1w est., shipped) have a real baseline now: `git log --all
+--format="%an %s" | wc -l` shows 5 commits over ~4 weeks part-time. The estimates below for
+v0.1 → v3 are **p50 re-estimates by the original author on work already half-shaped**. No
+longer purely greenfield; no longer unknown components; but LLM integration (new C-3) and
+two-axis calibration (new) are novel.
 
-There is no pledge population prior to apply yet — [`calibration.md`](./calibration.md) §6
-says the prior is bootstrapped from published software-estimation literature until real data
-exists, and does not carry per-category figures. So the multipliers below are a **stated
-assumption, not a fitted number**: median slip ~1.6x, p80 ~2.6x, taken from that literature's
-usual range for greenfield work with novel components. Replace this table with a real fit
-once ~200 resolved commitments exist.
+Multiplier: p80 ~2.0x for v0.1 (small, known scope), ~2.5x for v2 (Merkle/Rekor), ~3x for v3
+(touches every surface). These are stated assumptions; replace with a real fit once ~200
+resolved commitments exist.
 
-| Phase | Stated (p50) | Calibrated p80 | What drives the tail |
-|---|---|---|---|
-| v0 | 2 days | ~5 days | first-time Drizzle + pg-boss + Auth.js wiring |
-| v1 | 1 week | ~2.5 weeks | Chevrotain grammar iteration; canonicalisation edge cases |
-| v2 | 2 weeks | ~5 weeks | Merkle audit paths and Rekor integration are genuinely fiddly |
-| v3 | 2–3 weeks | ~6 weeks | cohorts touch every surface at once |
+| Phase | Status | Stated (p50) | Calibrated p80 | What drives the tail |
+|---|---|---|---|---|
+| v0 | ✓ SHIPPED | 2 days | ~5 days | ~~first-time Drizzle~~ done |
+| v1 | ✓ SHIPPED | 1 week | ~2.5 weeks | ~~grammar iteration~~ done |
+| v0.1 MVP | **IN PROGRESS** | 1 week | ~2 weeks | confidence field; Scope Negotiator LLM integration (C-3); badge endpoint |
+| v2 | planned | 2 weeks | ~5 weeks | Merkle audit paths, Rekor integration, two-axis calibration (ADR-0011) |
+| v3 | planned | 2–3 weeks | ~6 weeks | cohorts and organizer surfaces (C-4) |
 
-**These four phases should be the first four commitments on pledge itself.** Commit to the
-p50, publish the p80, and let the record settle the argument. That is both the honest thing
-and the best possible launch content.
+---
 
-**The gate that matters:** do not start phase N+1 until phase N's exit criteria are green.
-Every criterion below is written to be checkable, not aspirational.
+## Phase v0.1 — Deploy the core loop
+
+**Goal:** public launch. Commit, resolve, calibrate, share — the five-minute loop.
+Confidence-first: the confidence field unblocks the entire calibration identity, so it ships
+first despite being tiny. Scope Negotiator is the flagship feature but it is a new LLM
+dependency (C-3 flagged); include it if integrated, mark it optional if integration overruns.
+
+### Deliverables
+
+**Core (required for launch):**
+- **`confidence` field** in schema: numeric at commitment time, input to forecast and rank.
+  Schema migration + form field + UI display.
+- **Calibration basics** — one-axis model (slip), already designed in
+  [`calibration.md` §2](./calibration.md). Read-only display on profile: on-time rate, median slip,
+  calibration curve (reliability diagram). No leaderboard yet (v2/ADR-0011).
+- **Badge endpoint** — `/api/v1/badge/:handle.svg` returning an embeddable SVG with on-time %.
+  Cache with ETag per commit; re-render on resolution only.
+- All of **v0 + v1** (already shipped): DSL, ledger, amendments, witnesses, OG cards, receipts.
+
+**Optional (required for "Scope Negotiator" positioning, ships v0.2 if overruns):**
+- **Scope Negotiator** — LLM at pledge creation converts fuzzy intent → done-spec AST +
+  suggested deadline (new C-3 dependency). Calls an LLM endpoint outside the transaction
+  (advisory, non-blocking). Surfaces user's historical slip for this category.
+  Requires: LLM provider integration (Anthropic SDK), prompt engineering, evidence-bundle
+  lookup for historical context.
+
+### Exit criteria
+
+- [ ] `pnpm schema` and a fresh migration add `confidence numeric` to `commitment`. Existing
+      commitments have confidence NULL, rendered as "not set" in the UI.
+- [ ] Commitment form includes a confidence field (0–100 slider). Confidence is required for
+      new commitments, optional display for existing.
+- [ ] `/[handle]` profile shows: on-time count / total count, median slip (if n ≥ 3),
+      calibration curve as a reliability diagram with n annotated. Sourced from the one-axis
+      fit (designed, not yet implemented).
+- [ ] `/api/v1/badge/:handle.svg` returns a 200 with `Content-Type: image/svg+xml`, 
+      `Cache-Control: public, max-age=3600`, and an ETag based on the handle's latest resolution.
+      SVG displays on-time % as a shield or percentage badge. Embeddable in GitHub README.
+- [ ] Scope Negotiator (if shipped): pledge creation flow offers an optional "Refine with AI"
+      step that calls `POST /api/v1/negotiate`, returns a suggested done-spec AST + deadline
+      + confidence. User can accept, edit, or skip. Tests verify: no LLM call if user skips;
+      call failure does not block commitment; output is parsed by `@pledge/spec` (I-6).
+- [ ] One public pledge created end to end via pledge.sh, resolved via a real probe, with
+      confidence set and rendered on the profile. Visible at `pledge.sh/[your-handle]`.
+- [ ] Build and tests pass: `pnpm build && pnpm test && pnpm ledger:verify`.
+
+### Explicitly deferred out of v0.1
+
+Calibration Rank · Seasons / leaderboard · Two-axis calibration (self-calibration/confidence-vs-outcome) ·
+Duels, covenants, graveyard · Private pledges · Money stakes · API / PATs · Rekor anchoring ·
+MCP server · Scope Negotiator (if LLM integration not ready).
+
+> **v0.1 anti-goal:** do not ship a half-baked Scope Negotiator. If LLM integration slips,
+> move it to v0.2 and ship v0.1 with the confidence field + calibration basics + badge instead.
+> Better to launch without the flagship than to ship a feature that breaks on edge cases.
+
+---
+
+## Phase v2 — Make it an instrument
+
+**Goal:** the two-axis calibration model. Forecast, difficulty-weighted rank, dual metrics
+(slip + self-calibration).
+
+Depends on: v0.1 production data (~200 resolved commitments minimum before fitting begins).
+
+### Deliverables
+
+**One-axis fit (ready to ship, scaffolding in place in v0.1):**
+- Feature extraction from AST: probe kind, distinct sources, third-party API involvement,
+  foreign-repo references. Per [`adr/0007-ast-derived-features.md`](./adr/0007-ast-derived-features.md).
+- Python calibration sidecar (nightly job): censored normal-normal conjugate fit, exponential
+  recency weighting (~9-month half-life). Writes `calibration_fit` (schema TBD).
+- Per-builder hierarchical priors: `mu_i`, `sigma_i` for slip; `a_i`, `b_i` for
+  self-calibration (§4.2 of calibration.md, per hierarchical logistic recalibration).
+
+**Two-axis fit (NEW, sketched in calibration.md §1–2, _not_ in one-axis sidecar yet):**
+- Self-calibration axis: `K_ij` = "on-time binary" fitted against builder's `p_ij` (stated
+  confidence). Produces reliability curve and Brier score. Hierarchical logistic recalibration
+  with Cox recalibration intercept/slope per builder.
+- **Exclude self-reported outcomes from the fit entirely** (calibration.md §5.1, ADR-0010).
+  Self-reported rows are written as `status IN ('self_kept', 'self_missed')`, never converted
+  to 'kept'/'missed' (enforcement via second `check-invariants` assertion).
+
+**Leaderboard (ADR-0011, PROPOSED):**
+- Calibration Rank (ungameable): rank on Brier Skill Score `BSS_i = 1 - BS_i / BS_ref_i`
+  where reference is the population duration model at this pledge's AST features. Trivial
+  sandbagging yields negative rank; overpromising tanks you.
+- Seasonal reset (quarterly): leaderboard resets, ledger survives.
+- Display: lead with self-calibration axis (honesty), slip as the coaching input.
+
+**Forecast (inline, pre-computed):**
+- Inline forecast in the composer debounced on date change, computed in TypeScript from the
+  stored fit. Surfaces `q̂_ij` (predicted on-time %) + historical slip + suggested deadline.
+- "You estimated 90%, you're landing 65% on release-sized pledges. We suggest Sept 20 instead
+  of Sept 15." (the coaching line from calibration.md §1, available at n=0 using population
+  prior).
+
+**Verification (receipts):**
+- Signed receipts per [`spec/receipt-format.md` §3](./spec/receipt-format.md): payload + ed25519
+  signature at resolution time.
+- `pledge-verify` steps 3–5 (if ADR-0005 rejected; deferred if ADR-0005 accepted).
+
+### Exit criteria
+
+- [ ] A user with zero resolved commitments receives a sane forecast from the population prior,
+      labelled `confidence: low, n=0`.
+- [ ] Simulation test: generate 100 users with known true slip parameters, fit the model,
+      confirm the hierarchical model recovers them within 20% and beats naive per-user
+      averaging on n < 5 (this is the test that proves the moat exists).
+- [ ] Censoring test (critical, F-4): fit with the censored likelihood (abandoned commitments
+      excluded), then drop censored rows and fit again. The drop-rows fit **must show**
+      optimistic bias (higher mu) **and higher variance**. If it does not, the censoring is not
+      being exercised correctly (calibration.md §4).
+- [ ] Forecast renders in < 100ms p95 in the composer, with no sidecar in the request path.
+- [ ] Sidecar failure for 3 consecutive nights degrades to stale parameters with no user-facing
+      error and an ops alert (PagerDuty or equivalent).
+- [ ] A receipt verifies on a clean machine with `npx pledge-verify` (no network, no database,
+      no credentials).
+- [ ] Tampering with any field of a receipt (claim, deadline, confidence, outcome) causes
+      verification to fail, tested field by field.
+- [ ] Calibration Rank exists on profile, with an explanation of the formula and no builder
+      name/handle ranking without explicit opt-in (privacy-first).
+
+### Explicitly deferred out of v2
+
+Cohorts · organizer reports · private pledges · public API · Rekor anchoring (per ADR-0005);
+MCP server · Gamification (duels, graveyard, trophies) — those ship in v2.5 / v3.
+
+---
+
+## Phase v3 — Make it recur
+
+**Goal:** organizer and cohort surfaces. Distribution via building communities, not individuals
+alone.
+
+### Deliverables
+
+- Cohort object, organizer role, join flow, shared deadline.
+- Cohort leaderboard — participants, real-time machine-verified status, total on-time count.
+- **Organizer post-event report** — of N participants, how many shipped a machine-verified
+  artifact, with per-participant evidence links and a downloadable CSV/PDF. *This is the thing
+  organizers pay for; build it first within the phase.*
+- Gamification surfaces per [`product-overview.md` §3](./product-overview.md): Calibration Rank
+  leaderboard (seasonal), duels (two builders, comparable scope), covenants (3–8 toward shared
+  deadline), graveyard (dropped projects, "up for adoption" flag, epitaph).
+- Proof-of-Ship trophies: evidence trophies (visual distinction for machine-verified),
+  slip-honesty marks (annotating slip before deadline earns "called it early").
+- Billing for Cohort tier (Pro subscriptions remain individual-focused, per ADR-0013).
+
+### Exit criteria
+
+- [ ] Run one real cohort end to end — the Mumbai FOSS / Claude Code meetup pilot — with ≥ 10
+      participants, ≥ 80% machine-verified, and an organizer report generated with zero manual
+      intervention.
+- [ ] An organizer who has never used pledge can create a cohort, invite participants, and
+      export a report without support contact. Watched, not assumed.
+- [ ] Calibration Rank leaderboard is public and opt-in per builder. Seasonal reset tested
+      (Feb → May → Aug → Nov → repeat).
+- [ ] Duel mechanics tested: two builders, comparable scope (±20% estimated days by AST
+      features), same deadline, separate leaderboards for duels vs. individual rank.
+- [ ] Rate limits hold under a cohort deadline spike — 200 participants probing in the final
+      hour, without starving the daily background queue.
+
+### Explicitly deferred out of v3
+
+Private pledges · public API · MCP server · Go verifier · advanced cohort analytics.
+
+---
+
+## Cross-cutting: what must be true before public launch (v0.1)
+
+Independent of phase. These gate *launch*, not development.
+
+- [ ] **[Q-00](./open-questions.md) closed** — pre-launch personal/legal clearance (NOTES.local.md
+      or equivalent) resolved in writing. This is the hard blocker.
+- [ ] **[Q-01](./open-questions.md) decided** — private/public calibration denominator.
+- [ ] **[Q-05](./open-questions.md) decided** — bad-faith probing of targets you don't own.
+      Rate limits in place, domain verification gated on high-frequency probes.
+- [ ] **[Q-06](./open-questions.md) decided** — evidence blob retention and takedown policy.
+- [ ] **ADR-0010** (self-reported tier) **decided**. If accepted, self-reported outcomes are
+      written as `status IN ('self_kept', 'self_missed')` and excluded from calibration fits
+      (implementation in v0.1 or v2, not in v0.1 MVP if time-boxed).
+- [ ] `robots.txt` compliance verified; opt-out at `pledge.sh/probe` documented.
+- [ ] Key custody and rotation procedure for receipt signing keys documented.
+
+---
+
+## Sequencing risks
+
+| Risk | Phase | Mitigation |
+|---|---|---|
+| Confidence field blocks calibration and badge | v0.1 | Ship it first; it is ~2 hours. |
+| Scope Negotiator LLM integration slips | v0.1 | Move to v0.2 if it overruns; v0.1 launches without it. |
+| Calibration fit has no data to fit | v2 | Population prior bootstrapped from synthetic corpus, labelled as synthetic in UI. Fit only after ~50 real commitments. |
+| Censoring (abandoned commitments) breaks the fit | v2 | Censoring test (F-4) is a gate criterion, not a nice-to-have. |
+| Sidecar failure cascades to the user | v2 | Stale-fit degradation with an ops alert, no user-facing error. |
+| Cohorts need surfaces that don't exist yet | v3 | Cohort board reuses profile components. If they weren't built reusably in v0.1, v3 pays the tax. |
+| Self-reported tier abuse (C-1 contradiction) | v0.1–v2 | Exclusion from calibration is non-negotiable (math: BS = 0 by construction). Visual marking required. Build-time check tightened. |
+| LLM on the creation path (C-3 reversal) | v0.1 | Architecture.md §6.1 has the design; LLM output is parsed by @pledge/spec and content-addressed. Fails gracefully if LLM is down. |
 
 ---
 

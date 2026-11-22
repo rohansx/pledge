@@ -18,16 +18,18 @@ showing it off would be worse, because it invalidates every other outcome retroa
 
 | # | Threat | Impact on the claim | Status |
 |---|---|---|---|
-| T-04 | Probe gaming — satisfying the spec without doing the work | **Fatal** | Partially mitigated, structurally open |
+| T-04 | Probe gaming — satisfying the spec without doing the work | **Fatal** | Partially mitigated, structurally open; **worsened if self-reported tier is accepted** |
 | T-05 | Calibration laundering via visibility or trivial commitments | **Fatal** | Open — [Q-01](./open-questions.md), [Q-02](./open-questions.md) |
+| T-04b | Self-reported outcome abuse (if ADR-0010 accepted) | **Fatal** | Mitigated by tier marking and exclusion from calibration, but remains a bypass of the probe model |
 | T-01 | SSRF via probe targets | Severe (infra compromise → arbitrary record forgery) | Mitigated, must stay mitigated |
 | T-06 | Signing key compromise | Severe (silent forgery of any record) | Design specified, not built |
+| T-09 | Prompt injection against Scope Negotiator (NEW) | Severe (trivial spec generation, or data exfiltration from system prompt) | Mitigated by parsing + visible hash, unbuilt |
 | T-02 | Witness spoofing / collusion | Moderate–severe | Partially mitigated |
 | T-03 | Ledger tampering by the operator | Moderate (the thing anchoring exists to prevent) | Mitigated by design |
 | T-07 | Probe abuse — pledge as a DDoS amplifier | Moderate (reputational, legal) | Design specified |
 | T-08 | Evidence blob PII / copyright exposure | Moderate (legal) | Open |
-| T-09 | Account takeover | Standard | Standard mitigations |
-| T-10 | Sybil handles inflating a track record | Low | Accepted |
+| T-10 | Account takeover | Standard | Standard mitigations |
+| T-11 | Sybil handles inflating a track record | Low | Accepted |
 
 ---
 
@@ -77,6 +79,36 @@ overstating it is how a single viral counter-example destroys the whole record.
 
 **Design rule that follows:** never render a `kept` badge without its spec source reachable
 in one click. A context-free green check is the vector.
+
+### T-04b · Self-reported outcomes (if ADR-0010 accepted)
+
+[ADR-0010](./adr/0010-self-reported-verification-tier.md) proposes introducing a
+`self_reported` tier where a builder can mark an outcome `kept` or `missed` themselves,
+without a probe. This is an intentional bypass of the entire T-04 probe-gaming threat model.
+
+**Why it is a bypass:** if the builder can directly write an outcome, all mitigations above
+become advisory rather than enforced. A builder can commit to any trivial spec and
+immediately self-report `kept`. The only difference from the current product is visibility:
+the outcome is marked `self_reported` and excluded from calibration + the north-star metric.
+
+**The defence:** the tier marking and calibration exclusion are not technical controls —
+they are social controls. A reader who sees a profile can distinguish `machine_verified`
+from `self_reported` at a glance. A profile of 20 `self_reported` outcomes reads worse than
+one with zero outcomes to any reasonable reader. The north-star metric (`% machine_verified`)
+answers "what fraction of the ledger is actually checkable", which is the transparency the
+product needs.
+
+**Residual risk:** a user with a long history of machine-verified outcomes adds a handful of
+self-reported ones (plausibly justified: "I deployed it but monitoring failed") in a period of
+low activity. A reader may conflate the tier and assume all are verified, or the tier marking
+may fade from memory over time. This is not mitigated and should be accepted as the cost of
+the feature.
+
+**Calibration argument (from research):** a self-report is not a forecast–outcome pair because
+both the forecast (`p`) and the outcome are chosen by the same person. The Brier score is
+*definitionally* zero-information — a self-reporter can always attain `BS = 0` by construction,
+so self-reported resolutions must be excluded from calibration fits entirely, not merely from
+the north-star metric. This is stronger than the product argument and it is falsifiable.
 
 ---
 
@@ -275,13 +307,52 @@ Open. Minimum before launch:
 
 ---
 
-## T-09 · Account takeover
+## T-09 · Prompt injection against Scope Negotiator (NEW)
+
+The Scope Negotiator LLM is called on the write path with a builder's own statement as input.
+An attacker or motivated user could craft a statement to exploit the LLM and produce either:
+
+1. A trivial done-spec (exploit the LLM to emit `true` or a no-op)
+2. Exfiltration from the system prompt (attempt to read system instructions, other builders'
+   data, or model weights)
+
+### Controls
+
+1. **System prompt isolation.** The LLM sees only: the builder's own written intent, their
+   own history (if available), and calibration cues. It has no database access, no ability to
+   query other builders or view confidential information.
+2. **Parser-side validation.** Any output from the LLM is parsed by Chevrotain and validated
+   against the Zod AST schema before it is stored. A malformed or injection output is
+   rejected: "That doesn't parse as a valid spec."
+3. **Hash-based contract.** The stored spec is hashed, and that hash is the immutable
+   contract. Two specs that parse to the same AST hash to the same value, and that hash is
+   the commitment. A trivial injection produces a trivial hash that is visible on the profile.
+4. **Visibility + ranking.** Even if the LLM is tricked into emitting `true` as the spec,
+   the resulting commitment is visible, hashable, and ranked lower by the class taxonomy
+   ([ADR-0007](./adr/0007-ast-derived-features.md)) if weighting is applied.
+5. **Fallback path.** The LLM is optional. A builder who does not trust the LLM skips it
+   entirely and writes a spec manually in 20 characters. No friction, no injection surface.
+
+### What is not mitigated
+
+Exfiltration attacks that target the LLM system prompt or the LLM model weights themselves
+are not in pledge's threat model — they are the LLM provider's problem. If the LLM is
+compromised, the output is garbage until the provider notices and fixes it.
+
+A determined user *could* iterate on their intent text to steer the LLM toward a desired
+trivial spec, but that spec would be visible and ranked accordingly. The attack cost is
+non-zero and the outcome is legible.
+
+---
+
+## T-10 · Account takeover
 
 Standard. GitHub OAuth means GitHub is the trust root; a compromised GitHub account
 compromises the pledge profile.
 
 - Sessions via Auth.js, httpOnly, SameSite=Lax, short-lived.
-- PATs scoped per account, hashed at rest, revocable, never able to produce `kept`.
+- PATs scoped per account, hashed at rest, revocable, never able to produce `machine_verified`
+  outcomes (can only produce `self_reported` if that tier is accepted).
 - Handle changes are recorded as ledger entries — a profile cannot silently become someone
   else's.
 - **A takeover cannot rewrite history.** Ledger entries are immutable, so the worst outcome is
@@ -289,7 +360,7 @@ compromises the pledge profile.
 
 ---
 
-## T-10 · Sybil handles
+## T-11 · Sybil handles
 
 Create many handles, keep the flattering one. Cheap under GitHub OAuth.
 
@@ -304,7 +375,10 @@ credibility.
 
 ## Review triggers
 
-Revisit this document when any of these change: a new source type in the DSL (new SSRF and
-gaming surface); money stakes (turns gaming from reputational to financial fraud — a
-different threat model entirely); org/SSO tier (multi-tenant authz becomes real); any
-third-party consuming receipts programmatically (their trust assumptions become yours).
+Revisit this document when any of these change:
+- A new source type in the DSL (new SSRF and gaming surface)
+- Money stakes (turns gaming from reputational to financial fraud — a different threat model entirely)
+- Org/SSO tier (multi-tenant authz becomes real)
+- Any third-party consuming receipts programmatically (their trust assumptions become yours)
+- ADR-0010 (self-reported tier) is accepted — T-04b escalates from proposed to active
+- LLM provider changes or a security incident affects the Scope Negotiator (T-09 mitigation depends on the specific provider)
