@@ -1,0 +1,37 @@
+---
+// Lobby waitlist (https://trylobby.app/docs). Only the public pk_ key reaches the page.
+import { PUBLIC_LOBBY_URL, PUBLIC_LOBBY_PROJECT_KEY } from 'astro:env/client';
+
+const base = PUBLIC_LOBBY_URL.replace(/\/$/, '');
+const pk = PUBLIC_LOBBY_PROJECT_KEY;
+if (!pk) console.warn('[waitlist] PUBLIC_LOBBY_PROJECT_KEY is not set; rendering without the signup form.');
+---
+{pk ? (
+  <>
+    <div id="waitlist" aria-label="Join the Pledge waitlist"></div>
+    <noscript>
+      <!-- Plain HTML fallback: Lobby's public signup endpoint answers a form post with a redirect. -->
+      <form class="wl-fallback" method="post" action={`${base}/v1/w/${pk}/signup`}>
+        <label class="sr-only" for="wl-email">Work email</label>
+        <input id="wl-email" type="email" name="email" required placeholder="you@company.com" autocomplete="email" />
+        <button class="btn btn-dark" type="submit">Join the waitlist</button>
+      </form>
+    </noscript>
+    <script
+      is:inline
+      defer
+      src={`${base}/v1/wl.js`}
+      data-project={pk}
+      data-target="#waitlist"
+      data-button="Join the waitlist"
+      data-placeholder="you@company.com"
+      data-success="You're on the list. Check your inbox to confirm your place."
+      data-counter="true"
+    ></script>
+  </>
+) : (
+  <p class="foot-note">Waitlist isn't configured: set PUBLIC_LOBBY_PROJECT_KEY in .env.</p>
+)}
+<style>
+  .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+</style>
