@@ -3,26 +3,30 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="color-scheme" content="light dark" />
+    <meta name="robots" content="noindex" />
+    <meta name="theme-color" content="#F6F5F1" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#0D0C0B" media="(prefers-color-scheme: dark)" />
     <title>Pledge</title>
-    <style>
-      body {
-        font: 16px/1.5 system-ui, sans-serif;
-        max-width: 40rem;
-        margin: 4rem auto;
-        padding: 0 1rem;
-      }
-      #status {
-        font-family: ui-monospace, monospace;
-      }
-    </style>
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <!-- apply a saved theme before paint, so there is no flash -->
+    <script>
+      try {
+        const theme = localStorage.getItem("pledge-theme");
+        if (theme) document.documentElement.dataset.theme = theme;
+      } catch (e) {}
+    </script>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
   </head>
   <body>
-    <main>
-      <h1>Pledge</h1>
-      <p>Nothing is built yet. This page exists to prove the deploy pipeline.</p>
-      <p id="status" role="status">Checking the API…</p>
-    </main>
+    <svg width="0" height="0" style="position: absolute" aria-hidden="true">
+      <symbol id="mark" viewBox="0 0 24 24">
+        <path fill="currentColor" fill-rule="evenodd" d="M3 2h12l6 6v4l-6 6H9v4H3zM9 7h4l2 2v2l-2 2H9z" />
+        <rect x="17" y="18" width="4" height="4" fill="var(--seal, #C8361D)" />
+      </symbol>
+    </svg>
+    <div id="app"></div>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

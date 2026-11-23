@@ -44,7 +44,7 @@ answering on the public URL and it can reach its database.
 | `DOKPLOY_URL`, `DOKPLOY_API_KEY` | GitHub Actions secrets | Repository settings |
 | `DOKPLOY_API_APP_ID`, `DOKPLOY_WEB_APP_ID`, `DOKPLOY_SITE_APP_ID`, `PUBLIC_URL`, `SITE_URL` | GitHub Actions variables | Repository settings |
 | `PUBLIC_LOBBY_URL`, `PUBLIC_LOBBY_PROJECT_KEY` | GitHub Actions variables | Baked into the landing page at build time. Publishable values only; the Lobby secret key is never given to the build |
-| `DATABASE_URL`, `PORT` | Runtime environment of the API | Dokploy application `api`, never in git |
+| `DATABASE_URL`, `PORT`, `PLEDGE_API_TOKEN` | Runtime environment of the API | Dokploy application `api`, never in git |
 
 The API refuses to start without `DATABASE_URL`.
 
@@ -59,16 +59,23 @@ yet. When it is picked up:
 - The API verifies Keycloak-issued tokens on every request except `/api/healthz`.
 - The deploy smoke test gains one check that an unauthenticated API call is refused.
 
-Until then the API exposes only `/api/healthz`, and nothing that needs protecting may be
-added to it.
+Until then one shared access token stands in for sign-in. Every `/api/scans` request must
+carry it as a bearer token; the dashboard asks for it once and keeps it in the browser's
+local storage, and `pledge scan --publish` reads it from `PLEDGE_API_TOKEN`. Without the
+token configured on the API, the scan routes answer 503 rather than opening up. `/api/healthz`
+stays public.
+
+This is a stopgap with known limits: one token for everyone, no per-person access, no
+expiry, and no way to revoke it except by changing it in Dokploy and redeploying.
 
 ## Known limits
 
 - The Dokploy API is called over plain HTTP from the GitHub runner, as the other projects on
   this server do. The key is a repository secret, but it crosses the network unencrypted.
 - GitHub Actions are referenced by version tag, not pinned to commit SHAs.
-- There are no database migrations yet. The first one needs a migration step in the pipeline
-  before the deploy step.
+- The API creates its one table at startup with an idempotent statement. That holds while
+  schema changes are additive; the first change that alters a column needs real migrations
+  run in the pipeline before the deploy step.
 - There is one environment. Every push to `main` goes to production.
 
 ## Running locally

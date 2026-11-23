@@ -10,7 +10,7 @@ from __future__ import annotations
 
 TEMPLATE = "pledge-base"
 # The default sandbox has 473 MiB, too little for an app, its database and Docker (see docs/spikes/phase-0.md).
-CPU_COUNT, MEMORY_MB = 2, 2048
+CPU_COUNT, MEMORY_MB = 4, 4096  # a compiled backend plus its database does not build in less
 K6_VERSION = "v2.2.0"  # the only version the engine accepts
 ENGINE = "litetraffic @ git+https://github.com/rohansx/litetraffic@0c8cf17a5da17ad9123625b30a336115760ebd2a"
 

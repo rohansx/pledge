@@ -48,7 +48,7 @@ complete. Shape:
 ```
 
 - `services` start in order, each with cwd /work/app, and each must answer its `health` URL with HTTP 200 \
-within 30 seconds. `command` is an argv list, not a shell string. Anything that must happen first, such as \
+within 90 seconds. `command` is an argv list, not a shell string. Anything that must happen first, such as \
 a migration, is its own shell-wrapped service or part of the command that starts the app.
 - `routes` are listeners of Pledge's fault proxy. Every route forwards to one upstream. Traffic from \
 synthetic users goes to the application through its route, which is the `target`. The application's calls \
@@ -183,7 +183,7 @@ def _tool(name: str, description: str, properties: dict, required: list[str]) ->
 WORK_TOOLS = [
     _tool(
         "run_command",
-        "Run a shell command in the sandbox as root, with /work/app as the working directory. Returns the exit code and the end of the combined output. The command is stopped after timeout_seconds (at most 300). Do not start servers with this; use `pledge boot .`.",
+        "Run a shell command in the sandbox as root, with /work/app as the working directory. Returns the exit code and the end of the combined output. The command is stopped after timeout_seconds (at most 900). Do not start servers with this; use `pledge boot .`.",
         {"command": {"type": "string"}, "timeout_seconds": {"type": "integer", "description": "Seconds before the command is stopped. Use 60 unless the command is an install or a build."}},
         ["command", "timeout_seconds"],
     ),

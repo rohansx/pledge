@@ -27,6 +27,16 @@ Built ahead of the phases so that every later change ships the same way. A skele
 with images built on GitHub runners and a smoke test against the live URL. See
 [deployment](./deployment.md).
 
+## Pulled forward from Phase 4: the dashboard
+
+Built on 23 November 2026, ahead of its phase. The API stores published scans in Postgres
+and the dashboard at `app.pledge.sh` shows them: the list of scans, and for each one the
+pledges with a square per seed, expected against actual for every seed, the fault plan, the
+runs, and what Claude wrote and what it cost when it authored the scan. `pledge scan
+--publish` and `pledge publish` send a scan there. It sits behind one shared access token
+until Keycloak sign-in is wired. Not built: approving a pledge from the dashboard, accounts,
+the GitHub App and the orchestrator.
+
 ## Phase 0: Spikes (done)
 
 Run on 23 November 2026. Results and decisions are in [spikes/phase-0](./spikes/phase-0.md):

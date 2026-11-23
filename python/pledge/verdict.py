@@ -61,6 +61,7 @@ def judge(pledges: list[dict], counts: dict, scenario: str) -> dict:
         result = "broken" if entry["fail"] else "kept" if entry["pass"] == counts["runs"] else "inconclusive"
         rows.append({
             "id": pledge["id"], "statement": pledge["statement"], "status": pledge["status"], "result": result,
+            "source": pledge["source"], "confidence": str(pledge.get("confidence", "")), "assertion": pledge["check"]["assertion"],
             "kept": entry["pass"], "broken": entry["fail"], "unknown": entry["unknown"], "broken_in": entry["failed_runs"],
         })
     blocking = [row for row in rows if row["status"] == "approved"]

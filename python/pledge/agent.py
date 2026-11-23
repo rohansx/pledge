@@ -23,7 +23,7 @@ KEY_FILE = Path.home() / ".config/workz/anthropic.env"
 MAX_TOKENS = 16000
 OUTPUT_CHARS = 6000  # of a command's output, kept from the end
 FILE_CHARS = 60000
-MAX_COMMAND_SECONDS = 300
+MAX_COMMAND_SECONDS = 900  # a first build of a compiled app
 MAX_NUDGES = 2
 CHECK = f"cd /work && PYTHONPATH={PACKAGE} python3 -m pledge.check"
 
@@ -218,7 +218,7 @@ def boot_phase() -> Phase:
         task="The repository is at /work/app. Discover what it is, get it booting from pledge.boot.json, and call finish.",
         finish_tool=prompts.BOOT_FINISH,
         verify=lambda sandbox: _check(sandbox, "boot app"),
-        budget=Budget(tokens=1_500_000, seconds=900, commands=60),
+        budget=Budget(tokens=8_000_000, seconds=2100, commands=150),
         effort="medium",
     )
 
@@ -235,6 +235,6 @@ def author_phase(discovered: dict, recipe: str) -> Phase:
         task=task,
         finish_tool=prompts.AUTHOR_FINISH,
         verify=lambda sandbox: _check(sandbox, f"author app {RUNS}/baseline"),
-        budget=Budget(tokens=3_000_000, seconds=1500, commands=80),
+        budget=Budget(tokens=8_000_000, seconds=1500, commands=120),
         effort="high",
     )

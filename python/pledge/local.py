@@ -20,7 +20,7 @@ from pledge.proxy import DEFAULT_ADMIN_PORT
 
 BOOT_FILE = "pledge.boot.json"
 STATE_DIR = ".pledge-run"
-HEALTH_TIMEOUT_SECONDS = 30
+HEALTH_TIMEOUT_SECONDS = 90
 ADMIN_URL = f"http://127.0.0.1:{DEFAULT_ADMIN_PORT}"
 
 

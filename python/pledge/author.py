@@ -21,7 +21,10 @@ from pledge.template import TEMPLATE
 # Open during the boot phase only, so the agent can install dependencies. Closed before anything is run.
 INSTALL_HOSTS = [
     "registry.npmjs.org", "pypi.org", "files.pythonhosted.org", "deb.debian.org", "security.debian.org",
-    "registry-1.docker.io", "auth.docker.io", "production.cloudflare.docker.com",
+    "registry-1.docker.io", "auth.docker.io", "production.cloudflare.docker.com", "ghcr.io", "pkg-containers.githubusercontent.com",
+    "proxy.golang.org", "sum.golang.org", "go.dev", "dl.google.com", "storage.googleapis.com",
+    "github.com", "codeload.github.com", "objects.githubusercontent.com", "release-assets.githubusercontent.com",
+    "apt.postgresql.org", "deb.nodesource.com", "static.crates.io", "index.crates.io", "rubygems.org",
 ]
 # A first scan starts from the repository alone: anything already authored is left behind.
 AUTHORED = {".pledge", "pledge.boot.json"}
@@ -51,7 +54,8 @@ def author(app_dir: Path, out_dir: Path) -> dict:
         print(f"[{time.strftime('%H:%M:%S')}] {message}", file=sys.stderr, flush=True)
 
     started = time.monotonic()
-    sandbox = Sandbox.create(TEMPLATE, timeout=SANDBOX_SECONDS * 3, network={"allow_out": INSTALL_HOSTS, "deny_out": DENY_ALL})
+    # The E2B Hobby plan stops a sandbox after one hour.
+    sandbox = Sandbox.create(TEMPLATE, timeout=55 * 60, network={"allow_out": INSTALL_HOSTS, "deny_out": DENY_ALL})
     phases: list[agent.PhaseResult] = []
     try:
         log(f"sandbox {sandbox.sandbox_id}")
