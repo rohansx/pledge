@@ -6,7 +6,7 @@ and the [plan](./plan.md) phase that should answer it.
 | # | Question | Would change | Answer in |
 |---|---|---|---|
 | Q-3 | **Non-HTTP dependencies.** Queues, gRPC and background workers do not pass through an HTTP proxy. Which of these matter for the first ten customers? | [Sandbox](./sandbox-design.md) fault proxy | Phase 1, with design partners |
-| Q-5 | **Reading state.** Is direct database access enough, or do some apps keep the truth in a third-party system? | [Sandbox](./sandbox-design.md) observing the data | Phase 1 |
+| Q-5 | **Reading state.** Is direct database access enough, or do some apps keep the truth in a third-party system? Phase 1 read only the fake provider's log; the database reader is not built. | [Sandbox](./sandbox-design.md) observing the data | Phase 2 |
 | Q-6 | **Flake rate.** How often does a clean app show a broken pledge because of sandbox noise? | Verdict counting, adaptive seeds | Phase 3 |
 | Q-7 | **Shrinking.** What is the simplest way to reduce a failing fault plan to the one fault that matters? | Explain phase, findings | Phase 3 |
 | Q-8 | **Planted bugs.** Do bugs written by Claude resemble real ones closely enough for the proof to mean something? | [Agent](./agent-design.md) prove phase, the meaning of "proven" | Phase 3 |

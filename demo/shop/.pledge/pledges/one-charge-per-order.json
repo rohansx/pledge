@@ -1,0 +1,9 @@
+{
+  "schema_version": 1,
+  "id": "one-charge-per-order",
+  "statement": "An order is charged at the payment provider exactly once, however many times the customer has to retry.",
+  "check": { "scenario": "checkout", "assertion": "one_charge_per_order" },
+  "source": "domain_template",
+  "confidence": "high",
+  "status": "approved"
+}

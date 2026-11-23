@@ -1,0 +1,9 @@
+{
+  "schema_version": 1,
+  "id": "customer-payment-succeeds",
+  "statement": "A customer who places an order and pays ends up with a successful payment, retrying if a reply is lost.",
+  "check": { "scenario": "checkout", "assertion": "customer_payment_succeeds" },
+  "source": "inferred",
+  "confidence": "medium",
+  "status": "approved"
+}

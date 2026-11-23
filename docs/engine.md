@@ -47,13 +47,14 @@ reader runs each pledge's query and returns JSON, and the scenario lists its ori
 `allowed_origins`. This keeps database drivers out of the engine and gives every check the
 same matchers, polling and redaction.
 
-The state reader is a Pledge component to build with the base template. It is not in the
+The state reader is a Pledge component still to build. Phase 1 checked its pledge against
+the fake provider's call log instead. It is not in the
 component list of the [architecture](./architecture.md) yet.
 
 ## Not done
 
-- Fault plan `params` are recorded as written. Their shape per fault kind belongs to the
-  fault proxy and is not defined until that exists.
+- Fault plan `params` are recorded by the engine as written. The fault proxy defines and
+  validates them; so far only for `retry` (see [phase-1](./phase-1.md)).
 - Proxy and fake-service logs are not copied into the run directory, so they are not covered
   by the engine's redaction or its artifact checksums.
 - The run does not record a snapshot id.

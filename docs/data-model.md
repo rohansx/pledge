@@ -15,6 +15,19 @@ reviewed in a pull request, and run data is files in a run directory.
 | Evidence | Event log, failing samples with expected and actual, proxy and fake-service logs, report, checksums | Run directory |
 | Finding | A broken pledge, the seeds it broke on, the smallest fault plan that breaks it, a replay command | Report and pull request comment |
 
+## File formats so far
+
+Defined by hand in Phase 1 and validated by the `pledge` CLI. See the
+[demo shop](../demo/shop) for one of each.
+
+- **Pledge**, `.pledge/pledges/<id>.json`: `schema_version`, `id`, `statement`, `check`
+  (`scenario` and `assertion`), `source`, `confidence`, `status`.
+- **Faults**, `.pledge/faults/<name>.json`: a `faults` list. A run combines it with a seed
+  into the fault plan the engine records.
+- **Boot recipe**, `pledge.boot.json`: the services to start with their health checks, the
+  proxy routes, the traffic target and the fakes to reset between runs. In the data model
+  above this is part of the repo profile; in Phase 1 it is a file next to the app.
+
 ## Pledge states
 
 ```mermaid

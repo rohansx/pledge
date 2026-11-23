@@ -36,4 +36,7 @@ coverage/
 
 # Run directories and evidence
 runs/
+.pledge-run/
+*.db
+*.egg-info/
 evidence/

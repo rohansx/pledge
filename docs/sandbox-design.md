@@ -40,6 +40,9 @@ through it. A fault plan is a seed plus a list of faults:
 | Delay | Slows one dependency | Timeouts handled badly |
 | Restart | Asks the supervisor to kill and restart the app mid-request | Half-finished writes |
 
+Only `retry` is built so far. Its exact behaviour and parameters are in
+[phase-1](./phase-1.md).
+
 ## Fake services
 
 A fake accepts the calls the app makes to a real provider, answers plausibly, records every

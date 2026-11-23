@@ -8,8 +8,8 @@ data against a set of **pledges**: statements about the data that must always ho
 Claude writes the scenarios, the pledges and the planted bugs that prove each pledge can
 fail. Deterministic checks on the app's data decide the verdict. A model never does.
 
-> **Status: proposed design.** Only the deploy pipeline and a skeleton API and dashboard
-> exist; nothing in the design has been built or measured. The
+> **Status: early.** The sandbox loop works by hand on a demo app ([Phase 1](./docs/phase-1.md));
+> the agent and the hosted product are not built. The rest of `docs/` is still a proposed design. The
 > [open questions](./docs/open-questions.md) list what could change it. The previous
 > product that lived in this repository is archived on the `obsolete` branch.
 
@@ -27,6 +27,7 @@ fail. Deterministic checks on the app's data decide the verdict. A model never d
 | [Deployment](./docs/deployment.md) | Where it runs, the build-and-deploy pipeline, what is on hold |
 | [Plan and phases](./docs/plan.md) | Build order, exit criteria per phase, decisions still to make |
 | [Phase 0 spike results](./docs/spikes/phase-0.md) | What was measured on E2B: Compose, fork speed, closed network, SDK redirection |
+| [Phase 1 result](./docs/phase-1.md) | The loop by hand: a double charge found under a lost-reply fault, in E2B |
 | [Open questions](./docs/open-questions.md) | Unverified assumptions that could change the design |
 
 ## The four design choices

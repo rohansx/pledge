@@ -1,0 +1,42 @@
+{
+  "schema_version": 1,
+  "name": "checkout",
+  "script": "journeys.js",
+  "actors": [{ "class": "buyer", "count": 8, "auth_recipe": "none" }],
+  "fixtures": { "recipe": "none" },
+  "journeys": [
+    {
+      "name": "purchase",
+      "max_requests": 4,
+      "max_writes": 4,
+      "expected_statuses": { "pay": [200, 201, 504] },
+      "stages": ["ordered", "paid"]
+    }
+  ],
+  "schedule": {
+    "unit": "journeys_per_second",
+    "phases": [{ "name": "steady", "seconds": 5, "rate": 4 }]
+  },
+  "assertions": ["customer_payment_succeeds", "one_charge_per_order"],
+  "observer": "payment-provider-ledger",
+  "observations": [
+    {
+      "assertion": "one_charge_per_order",
+      "origin": "http://127.0.0.1:14000",
+      "path": "/_fake/summary",
+      "expected": {
+        "/orders_charged": "${planned_journeys}",
+        "/orders_charged_more_than_once": 0,
+        "/max_charges_per_order": 1
+      }
+    }
+  ],
+  "allowed_origins": ["http://127.0.0.1:14000"],
+  "budgets": {
+    "max_seconds": 30,
+    "max_requests": 120,
+    "max_write_attempts": 100,
+    "max_in_flight": 8,
+    "max_artifact_bytes": 16777216
+  }
+}

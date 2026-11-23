@@ -46,7 +46,12 @@ Answer the questions that decide whether the sandbox design holds at all. Throwa
 **Exit:** a written answer to Q-1, Q-2 and Q-4, and a decision on native services versus
 containers in the base template.
 
-## Phase 1: Sandbox loop by hand
+## Phase 1: Sandbox loop by hand (done)
+
+Met its exit criterion on 23 November 2026, locally and in E2B; see [phase-1](./phase-1.md).
+Built with the `retry` fault only. The other two faults listed below, same-instant requests
+and duplicate delivery, are carried into Phase 3 with the rest. What follows is the original
+brief.
 
 One known app, hand-written inputs, no Claude. Proves the engine-plus-faults loop finds a
 real bug.
@@ -83,7 +88,7 @@ The part that makes a pledge trustworthy and a finding actionable.
 
 - Prove phase: planted bug as a patch in a fork, pledge must break.
 - Parallel fault runs across forks, adaptive seeds, verdict as a count.
-- Remaining faults: reorder, delay, restart.
+- Remaining faults: duplicate delivery, same-instant requests, reorder, delay, restart.
 - Explain phase: plain-language finding, minimal fault plan, replay command.
 - Shrinking a failing fault plan (Q-7).
 - Measure flake rate on clean apps (Q-6) and review planted bugs for realism (Q-8).
@@ -134,7 +139,6 @@ gets a pull request comment on their next change.
 The overview leaves these open, so the plan does not assume them:
 
 - The dashboard's UI library and where its static files are hosted.
-- Which stack the first base template supports.
 - Which providers get the first hand-written fakes. This needs the design partners named.
 - Whether the engine is vendored, pinned as a dependency, or developed in this repository.
 - Where the open-source boundary sits between the `pledge` CLI and the hosted service.
