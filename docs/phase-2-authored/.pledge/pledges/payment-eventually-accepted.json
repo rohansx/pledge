@@ -1,0 +1,12 @@
+{
+ "schema_version": 1,
+ "id": "payment-eventually-accepted",
+ "statement": "A client that retries a payment after a lost reply or provider error eventually gets a success answer for an existing order rather than a permanent error.",
+ "check": {
+  "scenario": "checkout",
+  "assertion": "payment_accepted"
+ },
+ "source": "inferred",
+ "confidence": "low",
+ "status": "proposed"
+}

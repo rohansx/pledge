@@ -1,0 +1,5 @@
+{"description": "Provider charge replies are lost for a third of charges (the charge is recorded but the app sees a 5xx and answers 502, so the client retries), and a third of order-creation replies are lost too.",
+ "faults": [
+   {"kind": "retry", "target": "payments POST /v1/charges", "params": {"rate": 0.34, "status": 503}},
+   {"kind": "retry", "target": "app POST /orders", "params": {"rate": 0.34}}
+ ]}

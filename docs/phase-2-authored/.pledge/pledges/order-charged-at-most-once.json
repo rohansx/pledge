@@ -1,0 +1,12 @@
+{
+ "schema_version": 1,
+ "id": "order-charged-at-most-once",
+ "statement": "The payment provider never charges the same order more than once, even when the client retries POST /payments after a lost reply or a provider error.",
+ "check": {
+  "scenario": "checkout",
+  "assertion": "provider_no_order_charged_twice"
+ },
+ "source": "domain_template",
+ "confidence": "high",
+ "status": "proposed"
+}

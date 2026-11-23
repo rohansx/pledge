@@ -1,0 +1,12 @@
+{
+ "schema_version": 1,
+ "id": "paid-order-has-one-payment-record",
+ "statement": "An order that was paid has exactly one payment row in the shop's database, as reported by GET /orders/<ref>, no matter how many times the payment request was retried.",
+ "check": {
+  "scenario": "checkout",
+  "assertion": "order_has_one_payment"
+ },
+ "source": "inferred",
+ "confidence": "high",
+ "status": "proposed"
+}

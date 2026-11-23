@@ -23,7 +23,7 @@ DENY_ALL = ["0.0.0.0/0"]
 SANDBOX_SECONDS = 15 * 60
 APP, PACKAGE, RUNS = "/work/app", "/opt/pledge", "/work/runs"
 PLEDGE = f"cd /work && PYTHONPATH={PACKAGE} python3 -m pledge.cli"
-SKIP = {".pledge-run", "__pycache__", ".venv", "node_modules", ".git"}
+SKIP = {".pledge-run", ".pledge-runs", "__pycache__", ".venv", "node_modules", ".git"}
 MAX_EVIDENCE_BYTES = 64 * 1024 * 1024
 
 
@@ -43,10 +43,10 @@ def load_key() -> None:
     raise RuntimeError(f"{KEY_FILE} has no E2B_API_KEY")
 
 
-def _tar(directory: Path) -> bytes:
+def _tar(directory: Path, skip: set[str] = frozenset()) -> bytes:
     buffer = io.BytesIO()
     with tarfile.open(fileobj=buffer, mode="w:gz") as archive:
-        archive.add(directory, arcname=".", filter=lambda item: None if Path(item.name).name in SKIP or item.name.endswith((".db", ".pyc")) else item)
+        archive.add(directory, arcname=".", filter=lambda item: None if Path(item.name).name in SKIP | skip or item.name.endswith((".db", ".pyc")) else item)
     return buffer.getvalue()
 
 
@@ -60,8 +60,8 @@ def _sh(sandbox, command: str, timeout: int = 300) -> str:
         raise RuntimeError(f"in sandbox, `{command[:70]}` exited {exc.exit_code}: {(exc.stdout + exc.stderr)[-600:]}") from None
 
 
-def _upload(sandbox, directory: Path, destination: str) -> None:
-    sandbox.files.write("/tmp/upload.tgz", _tar(directory), user="root")
+def _upload(sandbox, directory: Path, destination: str, skip: set[str] = frozenset()) -> None:
+    sandbox.files.write("/tmp/upload.tgz", _tar(directory, skip), user="root")
     _sh(sandbox, f"mkdir -p {destination} && tar -xzf /tmp/upload.tgz -C {destination} && rm /tmp/upload.tgz")
 
 

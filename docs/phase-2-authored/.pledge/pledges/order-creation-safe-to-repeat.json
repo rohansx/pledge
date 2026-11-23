@@ -1,0 +1,12 @@
+{
+ "schema_version": 1,
+ "id": "order-creation-safe-to-repeat",
+ "statement": "Creating an order succeeds even when the request is repeated after a lost reply, as the code's docstring states ('safe to repeat').",
+ "check": {
+  "scenario": "checkout",
+  "assertion": "order_created"
+ },
+ "source": "stated",
+ "confidence": "medium",
+ "status": "proposed"
+}

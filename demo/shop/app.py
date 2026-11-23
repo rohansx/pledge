@@ -1,11 +1,10 @@
-"""Demo shop: the app under test for Pledge's first loop. Standard library only.
+"""A small shop API. Standard library only.
 
     POST /orders    {"ref": "...", "amount": 1250}   create an order (safe to repeat)
     POST /payments  {"order_ref": "..."}             charge the order through the payment provider
     GET  /orders/<ref>                               the order and how many payments it has
 
-It has one deliberate bug. POST /payments charges the provider every time it is called, so a customer whose
-first reply is lost and who retries is charged twice. Run with SHOP_FIX=1 for the corrected behaviour.
+Environment: PORT, PAYMENTS_URL (the payment provider's base URL), SHOP_DB (SQLite file), PAYMENTS_GUARD.
 """
 
 from __future__ import annotations
@@ -21,7 +20,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 PORT = int(os.environ.get("PORT", "3000"))
 PAYMENTS_URL = os.environ.get("PAYMENTS_URL", "http://127.0.0.1:4000")
 DB_PATH = os.environ.get("SHOP_DB", "shop.db")
-FIXED = os.environ.get("SHOP_FIX") == "1"
+PAYMENTS_GUARD = os.environ.get("PAYMENTS_GUARD") == "1"
 
 db = sqlite3.connect(DB_PATH, check_same_thread=False, isolation_level=None)
 db.executescript(
@@ -49,8 +48,7 @@ def pay(order_ref: str) -> tuple[int, dict]:
     if row is None:
         return 404, {"error": "no such order"}
     amount, status = row
-    if FIXED and status == "paid":
-        # The fix: a retry of a payment that already went through is answered without charging again.
+    if PAYMENTS_GUARD and status == "paid":
         return 200, {"order_ref": order_ref, "status": "paid"}
     try:
         charge_id = charge_provider(order_ref, amount)

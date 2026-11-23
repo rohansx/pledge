@@ -37,7 +37,7 @@ def test_the_buggy_shop_breaks_one_charge_per_order_when_payment_replies_are_los
 
 
 def test_the_fixed_shop_keeps_every_pledge_under_the_same_fault(tmp_path):
-    runs, report = scan(tmp_path, {"SHOP_FIX": "1"})
+    runs, report = scan(tmp_path, {"PAYMENTS_GUARD": "1"})
 
     assert report["verdict"] == "kept"
     assert all(run["faults_injected"] > 0 for run in runs)
@@ -45,7 +45,7 @@ def test_the_fixed_shop_keeps_every_pledge_under_the_same_fault(tmp_path):
 
 def test_the_same_seed_injects_the_same_number_of_faults_on_both_versions(tmp_path):
     buggy, _ = scan(tmp_path / "a", {}, seeds=(5,))
-    fixed, _ = scan(tmp_path / "b", {"SHOP_FIX": "1"}, seeds=(5,))
+    fixed, _ = scan(tmp_path / "b", {"PAYMENTS_GUARD": "1"}, seeds=(5,))
 
     assert buggy[0]["faults_injected"] == fixed[0]["faults_injected"]
 

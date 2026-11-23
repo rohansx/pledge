@@ -1,0 +1,134 @@
+{
+  "schema_version": 1,
+  "out_dir": "(a temporary directory)",
+  "seconds": 125.6,
+  "phases": [
+    {
+      "phase": "boot",
+      "model": "claude-opus-5-5",
+      "result": {
+        "summary": "A small shop API in one file (app.py) that uses only the Python standard library. Clients create orders, then pay for an order. Paying charges the order's amount through an external payment provider. Payments are recorded in SQLite.",
+        "stack": "Python 3, standard library only (http.server ThreadingHTTPServer, sqlite3). Started with `python3 app.py`. Settings come from environment variables: PORT=13100, PAYMENTS_URL=http://127.0.0.1:18101 (the proxy route to the payments fake) and SHOP_DB=.pledge-run/shop.db. The boot command deletes the database before starting, so each boot starts empty. The app creates its schema itself when it starts, so there are no separate migrations. PAYMENTS_GUARD is left unset, which is the default and means the guard is off.",
+        "endpoints": [
+          {
+            "method": "GET",
+            "path": "/healthz",
+            "does": "Returns 200 {\"ok\": true}."
+          },
+          {
+            "method": "POST",
+            "path": "/orders",
+            "does": "Body {\"ref\": non-empty string, \"amount\": positive integer, not a bool}. Runs INSERT OR IGNORE into orders (ref, amount, status='pending'). Repeating it is safe: if the ref already exists nothing changes, even when the amount differs. Returns 201 {\"ref\"}. Returns 400 {\"error\"} if the body is invalid."
+          },
+          {
+            "method": "POST",
+            "path": "/payments",
+            "does": "Body {\"order_ref\": non-empty string}. Returns 400 if order_ref is missing and 404 if there is no such order. It then calls the provider with POST {PAYMENTS_URL}/v1/charges {order_ref, amount}. On success it inserts a row into payments (order_ref, charge_id), sets the order's status to 'paid' and returns 201 {\"order_ref\", \"status\": \"paid\"}. If the provider fails (URLError or timeout, 10 s) it returns 502 {\"error\": \"payment provider unavailable\"} and writes nothing. There is no idempotency: with PAYMENTS_GUARD unset, every call charges again, even for an order that is already paid. With PAYMENTS_GUARD=1, an order that is already paid returns 200 without charging. That check-then-charge is not atomic, so concurrent requests can still charge twice."
+          },
+          {
+            "method": "GET",
+            "path": "/orders/<ref>",
+            "does": "Returns 200 {ref, amount, status, payments}. payments is the number of payment rows for the order. Returns 404 if the order does not exist."
+          }
+        ],
+        "outbound_calls": [
+          {
+            "service": "payments provider",
+            "call": "POST /v1/charges with JSON {\"order_ref\": string, \"amount\": int}. The app expects JSON containing \"id\".",
+            "made_by": "POST /payments, once per request, after the order lookup succeeds.",
+            "fake": "Built-in fake `python3 -m pledge.fakes.payments` on port 14100, reached through proxy route 'payments' on 18101. GET /_fake/summary returns charges, orders_charged, orders_charged_more_than_once and max_charges_per_order."
+          }
+        ],
+        "data_model": "SQLite at .pledge-run/shop.db. Table orders: ref TEXT PRIMARY KEY, amount INTEGER NOT NULL, status TEXT NOT NULL DEFAULT 'pending'. It is written by POST /orders (insert) and POST /payments (status set to 'paid'). Table payments: id INTEGER PRIMARY KEY, order_ref TEXT NOT NULL, charge_id TEXT NOT NULL. It is written by POST /payments. Nothing is unique on order_ref or charge_id.",
+        "notes": "The expected weakness is retrying POST /payments, for example after its reply is lost or after a provider timeout where the charge actually went through. Each retry produces another provider charge and another payments row. You can check this with the fake summary's orders_charged_more_than_once and with the payments count from GET /orders/<ref>. The reset URL clears only the fake's recorded calls, not the app's database, so use a unique order ref in each run."
+      },
+      "check": {
+        "problems": [],
+        "target": "http://127.0.0.1:18100",
+        "services": [
+          "app",
+          "payments-fake",
+          "proxy"
+        ]
+      },
+      "usage": {
+        "requests": 4,
+        "input_tokens": 10,
+        "cache_read_tokens": 11236,
+        "cache_write_tokens": 6056,
+        "output_tokens": 2508,
+        "commands": 3,
+        "seconds": 37.3,
+        "rejected_finishes": 0,
+        "tokens": 19810
+      }
+    },
+    {
+      "phase": "author",
+      "model": "claude-opus-5-5",
+      "result": {
+        "summary": "I wrote one scenario (`checkout`), 8 pledges and 2 faults files. With no faults, the scenario passes. With half the payment replies lost, it fails: 13 of 20 orders were charged twice (33 charges in total) and had 2 payment records each. That is the duplicate charge expected from the payment endpoint having no idempotency.\n\n**Scenario `checkout`:** 20 journeys over 4 seconds. Each journey creates an order with a unique reference and a random amount, then pays for it. Like a real client, it retries the same request up to 4 times when it gets a 5xx or no reply. It then reads the order back through `GET /orders/<ref>`.\n- **Per-journey checks:** the order was created, the payment was accepted, the order has exactly one payment record, its status is `paid`, and its amount is still the one it was created with.\n- **Checks on the payments fake's summary after the run:** no order was charged twice, the total number of charges equals the number of journeys, and every order was charged once.\n- 502, 503 and 504 are listed as expected statuses for creating and paying.\n\n**Pledges** (all `proposed`):\n- **Common rules for payments (`domain_template`):** each order is charged at most once (high); the number of charges equals the number of paid orders (high); every paid order was actually charged (medium).\n- **My own reading of the code (`inferred`):** a paid order has exactly one payment record (high); a successful payment reads back as `paid` (medium); a client that retries eventually gets its payment accepted (low).\n- **Stated in the code (`stated`):** an order's amount never changes after creation, because the insert ignores repeats (high); repeating order creation is safe, as the docstring says (medium).\n\n**Faults:**\n- `lost-payment-replies`: half of the `POST /payments` replies are lost after the payment has gone through.\n- `lost-charge-and-order-replies`: a third of the provider's charge replies are replaced with a 503 after the charge is recorded, so the app returns 502 and the client retries. A third of the order-creation replies are lost too. I didn't run this file.",
+        "open_questions": [
+          "payment-eventually-accepted (low confidence): whether a client that retries should be guaranteed eventual success is a product decision. Reviewers may drop it.",
+          "provider_every_order_charged and provider_charges_match_orders assume the fake's summary is reset before every run. The boot recipe's reset URL does this, but a run without the reset would see charges from earlier runs."
+        ]
+      },
+      "check": {
+        "problems": [],
+        "baseline": [
+          {
+            "scenario": "checkout",
+            "verdict": "pass",
+            "failing_assertions": [],
+            "run_id": "run_20261123T124443Z_8f6d7a4f"
+          }
+        ],
+        "scenarios": [
+          "checkout"
+        ],
+        "pledges": [
+          "charges-equal-paid-orders",
+          "every-paid-order-was-charged",
+          "order-amount-fixed-at-creation",
+          "order-charged-at-most-once",
+          "order-creation-safe-to-repeat",
+          "paid-order-has-one-payment-record",
+          "paid-order-status-is-paid",
+          "payment-eventually-accepted"
+        ]
+      },
+      "usage": {
+        "requests": 7,
+        "input_tokens": 16,
+        "cache_read_tokens": 157407,
+        "cache_write_tokens": 30009,
+        "output_tokens": 5245,
+        "commands": 5,
+        "seconds": 83.0,
+        "rejected_finishes": 0,
+        "tokens": 192677
+      }
+    }
+  ],
+  "baseline": [
+    {
+      "scenario": "checkout",
+      "verdict": "pass",
+      "failing_assertions": [],
+      "run_id": "run_20261123T124443Z_8f6d7a4f"
+    }
+  ],
+  "scenarios": [
+    "checkout"
+  ],
+  "pledges": [
+    "charges-equal-paid-orders",
+    "every-paid-order-was-charged",
+    "order-amount-fixed-at-creation",
+    "order-charged-at-most-once",
+    "order-creation-safe-to-repeat",
+    "paid-order-has-one-payment-record",
+    "paid-order-status-is-paid",
+    "payment-eventually-accepted"
+  ]
+}

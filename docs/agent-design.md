@@ -39,6 +39,9 @@ Each pledge records its source, and the source sets its starting confidence:
 3. **Inferred:** Claude's reading of what the code intends. Lowest confidence, always shown
    for review first.
 
+Built so far: run a command, read a file, write a file, and finish. The HTTP request tool is
+covered by running curl, and running the engine is a command. See [phase-2](./phase-2.md).
+
 ## Guardrails
 
 - **No verdict authority.** Claude never decides pass or fail. It writes checks; the engine

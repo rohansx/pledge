@@ -1,0 +1,63 @@
+{
+  "schema_version": 1,
+  "name": "checkout",
+  "script": "journeys.js",
+  "actors": [{"class": "shopper", "count": 20, "auth_recipe": "none"}],
+  "fixtures": {"recipe": "empty-shop-unique-order-refs-per-run"},
+  "journeys": [
+    {
+      "name": "checkout",
+      "max_requests": 9,
+      "max_writes": 8,
+      "expected_statuses": {
+        "create_order": [201, 502, 503, 504],
+        "pay": [200, 201, 502, 503, 504],
+        "read_order": [200]
+      },
+      "stages": ["order_created", "paid", "verified"]
+    }
+  ],
+  "schedule": {
+    "unit": "journeys_per_second",
+    "phases": [{"name": "measure", "seconds": 4, "rate": 5}]
+  },
+  "assertions": [
+    "order_created",
+    "payment_accepted",
+    "order_has_one_payment",
+    "order_status_paid",
+    "order_amount_unchanged",
+    "provider_no_order_charged_twice",
+    "provider_charges_match_orders",
+    "provider_every_order_charged"
+  ],
+  "observer": "per-journey GET /orders/<ref> read-back plus the payments fake's /_fake/summary",
+  "allowed_origins": ["http://127.0.0.1:14100"],
+  "observations": [
+    {
+      "origin": "http://127.0.0.1:14100",
+      "path": "/_fake/summary",
+      "assertion": "provider_no_order_charged_twice",
+      "expected": {"/orders_charged_more_than_once": 0, "/max_charges_per_order": {"lte": 1}}
+    },
+    {
+      "origin": "http://127.0.0.1:14100",
+      "path": "/_fake/summary",
+      "assertion": "provider_charges_match_orders",
+      "expected": {"/charges": "${planned_journeys}"}
+    },
+    {
+      "origin": "http://127.0.0.1:14100",
+      "path": "/_fake/summary",
+      "assertion": "provider_every_order_charged",
+      "expected": {"/orders_charged": "${planned_journeys}"}
+    }
+  ],
+  "budgets": {
+    "max_seconds": 60,
+    "max_requests": 400,
+    "max_write_attempts": 300,
+    "max_in_flight": 8,
+    "max_artifact_bytes": 5000000
+  }
+}

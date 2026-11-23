@@ -7,7 +7,7 @@ Claude. The loop finds a real bug, and stops finding it when the bug is fixed.
 
 | Piece | Where | Notes |
 |---|---|---|
-| Demo shop | [`demo/shop/app.py`](../demo/shop/app.py) | Orders and payments on SQLite, standard library only. `POST /payments` charges the provider on every call. `SHOP_FIX=1` turns on the fix |
+| Demo shop | [`demo/shop/app.py`](../demo/shop/app.py) | Orders and payments on SQLite, standard library only. `POST /payments` charges the provider on every call. `PAYMENTS_GUARD=1` turns on the fix. The file itself does not say so, so that the agent in Phase 2 is not handed the answer |
 | Fault proxy | [`python/pledge/proxy.py`](../python/pledge/proxy.py) | Reverse proxy with one listener per route and an admin port. Applies the `retry` fault |
 | Fake payment provider | [`python/pledge/fakes/payments.py`](../python/pledge/fakes/payments.py) | Accepts charges and records every call. Its call log is what the pledge is checked against |
 | Scenario | [`demo/shop/.pledge/scenarios/checkout`](../demo/shop/.pledge/scenarios/checkout) | 20 customers place an order and pay, retrying when a reply is lost |
@@ -87,7 +87,7 @@ cd python && uv venv .venv && uv pip install --python .venv/bin/python -e '.[eng
 
 # on this machine (needs k6 v2.2.0)
 cd ../demo/shop
-pledge boot .                                   # add --env SHOP_FIX=1 for the fixed shop
+pledge boot .                                   # add --env PAYMENTS_GUARD=1 for the fixed shop
 pledge run . --scenario checkout --faults .pledge/faults/lost-payment-reply.json --seed 1
 pledge verdict . runs/run_*
 pledge down .

@@ -1,0 +1,2 @@
+{"description": "Half of the payment requests reach the app and charge, but their reply is lost (504), so the client pays again.",
+ "faults": [{"kind": "retry", "target": "app POST /payments", "params": {"rate": 0.5}}]}

@@ -1,0 +1,12 @@
+{
+ "schema_version": 1,
+ "id": "every-paid-order-was-charged",
+ "statement": "Every order the client successfully paid was actually charged at the provider: no order is marked paid without a charge.",
+ "check": {
+  "scenario": "checkout",
+  "assertion": "provider_every_order_charged"
+ },
+ "source": "domain_template",
+ "confidence": "medium",
+ "status": "proposed"
+}

@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "services": [
+    {"name": "payments-fake", "command": ["python3", "-m", "pledge.fakes.payments", "--port", "14100"],
+     "health": "http://127.0.0.1:14100/healthz"},
+    {"name": "app", "command": ["sh", "-c", "rm -f .pledge-run/shop.db; mkdir -p .pledge-run; exec python3 app.py"],
+     "env": {"PORT": "13100", "PAYMENTS_URL": "http://127.0.0.1:18101", "SHOP_DB": ".pledge-run/shop.db"},
+     "health": "http://127.0.0.1:13100/healthz"}
+  ],
+  "routes": {
+    "app": {"listen": 18100, "upstream": "http://127.0.0.1:13100"},
+    "payments": {"listen": 18101, "upstream": "http://127.0.0.1:14100"}
+  },
+  "target": "http://127.0.0.1:18100",
+  "reset": ["http://127.0.0.1:14100/_fake/reset"]
+}

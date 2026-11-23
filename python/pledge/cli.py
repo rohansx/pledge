@@ -5,6 +5,7 @@
     pledge verdict APP_DIR RUN_DIR [RUN_DIR ...]
     pledge down APP_DIR
     pledge scan APP_DIR --scenario NAME --faults FILE [--seeds N] [--env KEY=VALUE ...]
+    pledge author APP_DIR --out DIR
 """
 
 from __future__ import annotations
@@ -59,6 +60,11 @@ def _parser() -> argparse.ArgumentParser:
     scan.add_argument("--env", action="append", default=[], metavar="KEY=VALUE")
     scan.add_argument("--runs-dir", type=Path, default=Path("runs"))
     scan.add_argument("--json", action="store_true")
+
+    author = commands.add_parser("author", help="have Claude boot an unseen repo in a sandbox and write its scenarios and pledges")
+    author.add_argument("app_dir", type=Path)
+    author.add_argument("--out", type=Path, required=True, help="empty directory for the repo plus the authored files")
+    author.add_argument("--json", action="store_true")
     return parser
 
 
@@ -73,6 +79,17 @@ def main(argv: list[str] | None = None) -> int:
             return 0
         if args.command == "run":
             print(json.dumps(local.run(args.app_dir, args.scenario, args.faults, args.seed, args.runs_dir)))
+            return 0
+        if args.command == "author":
+            from pledge.agent import AgentError  # imported here: only this command needs the Anthropic SDK
+            from pledge.author import author, format_report
+
+            try:
+                report = author(args.app_dir, args.out)
+            except AgentError as exc:
+                print(f"pledge: {exc}", file=sys.stderr)
+                return 3
+            print(json.dumps(report) if args.json else "\n".join(format_report(report)))
             return 0
         if args.command == "scan":
             from pledge.scan import scan  # imported here: only this command needs the E2B SDK

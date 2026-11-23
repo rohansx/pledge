@@ -1,0 +1,12 @@
+{
+ "schema_version": 1,
+ "id": "charges-equal-paid-orders",
+ "statement": "The total number of provider charges equals the number of orders paid: every charge corresponds to exactly one paid order, with no extra charges from retries.",
+ "check": {
+  "scenario": "checkout",
+  "assertion": "provider_charges_match_orders"
+ },
+ "source": "domain_template",
+ "confidence": "high",
+ "status": "proposed"
+}

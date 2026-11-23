@@ -1,0 +1,12 @@
+{
+ "schema_version": 1,
+ "id": "order-amount-fixed-at-creation",
+ "statement": "An order's amount is the amount it was created with; repeating POST /orders for the same ref never changes it (the code uses INSERT OR IGNORE and documents order creation as safe to repeat).",
+ "check": {
+  "scenario": "checkout",
+  "assertion": "order_amount_unchanged"
+ },
+ "source": "stated",
+ "confidence": "high",
+ "status": "proposed"
+}

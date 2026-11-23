@@ -14,6 +14,8 @@ dependencies = ["aiohttp>=3.9,<4"]
 engine = ["litetraffic @ git+https://github.com/rohansx/litetraffic@0c8cf17a5da17ad9123625b30a336115760ebd2a"]
 # The E2B SDK is only needed outside the sandbox, by `pledge scan`.
 scan = ["e2b>=2.64,<3"]
+# The Anthropic SDK is only needed outside the sandbox, by `pledge author`.
+agent = ["anthropic>=2.12,<3"]
 dev = ["pytest>=8,<10"]
 
 [project.scripts]

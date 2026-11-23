@@ -1,0 +1,12 @@
+{
+ "schema_version": 1,
+ "id": "paid-order-status-is-paid",
+ "statement": "An order for which POST /payments succeeded reads back with status 'paid'.",
+ "check": {
+  "scenario": "checkout",
+  "assertion": "order_status_paid"
+ },
+ "source": "inferred",
+ "confidence": "medium",
+ "status": "proposed"
+}
