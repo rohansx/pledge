@@ -1,8 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
-  <style>.d{fill:#141311}@media (prefers-color-scheme:dark){.d{fill:#EEEAE4}}</style>
-  <mask id="m" maskUnits="userSpaceOnUse" x="0" y="0" width="24" height="24">
-    <rect width="24" height="24" fill="#fff"/>
-    <path d="M6.5 12.5 10 16l7.5-8" fill="none" stroke="#000" stroke-width="2.75" stroke-linecap="square"/>
-  </mask>
-  <circle class="d" cx="12" cy="12" r="12" mask="url(#m)"/>
+  <style>.d{fill:#141311}.s{fill:#C8361D}@media (prefers-color-scheme:dark){.d{fill:#EEEAE4}.s{fill:#E2482B}}</style>
+  <path class="d" fill-rule="evenodd" d="M3 2h12l6 6v4l-6 6H9v4H3zM9 7h4l2 2v2l-2 2H9z"/>
+  <rect class="s" x="17" y="18" width="4" height="4"/>
 </svg>
