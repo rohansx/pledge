@@ -57,6 +57,9 @@ const jsonLd = {
   <!-- apply a saved theme before paint, so there's no flash -->
   <script is:inline>try{const t=localStorage.getItem('pledge-theme');if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
 
+  <!-- Hairline kernel (MIT, © Lucas Marques): the engine behind the hero figure. Classic script so it defines window.HL. -->
+  <script is:inline src="/vendor/hairline-kernel.js"></script>
+
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
