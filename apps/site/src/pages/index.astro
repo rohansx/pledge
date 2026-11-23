@@ -23,16 +23,12 @@ const bugs = [
 ];
 ---
 <Base title={title} description={description}>
-  <!-- Pledge mark: a solid seal with the check cut out. One fill, no hairlines, so it stays crisp at 16px. -->
+  <!-- Pledge mark: a faceted P (straight cuts only, on a 24 grid) with one seal-red block set off its corner,
+       the run that broke. Solid fills, no hairlines, so it stays crisp at 16px. -->
   <svg width="0" height="0" style="position:absolute" aria-hidden="true">
-    <defs>
-      <mask id="mark-cut" maskUnits="userSpaceOnUse" x="0" y="0" width="24" height="24">
-        <rect width="24" height="24" fill="#fff" />
-        <path d="M6.5 12.5 10 16l7.5-8" fill="none" stroke="#000" stroke-width="2.75" stroke-linecap="square" stroke-linejoin="miter" />
-      </mask>
-    </defs>
     <symbol id="mark" viewBox="0 0 24 24">
-      <circle cx="12" cy="12" r="12" fill="currentColor" mask="url(#mark-cut)" />
+      <path fill="currentColor" fill-rule="evenodd" d="M3 2h12l6 6v4l-6 6H9v4H3zM9 7h4l2 2v2l-2 2H9z" />
+      <rect x="17" y="18" width="4" height="4" fill="var(--seal, #C8361D)" />
     </symbol>
   </svg>
 
