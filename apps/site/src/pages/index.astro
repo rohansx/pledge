@@ -95,13 +95,24 @@ const prSteps = [
 
   <main>
     <header class="hero wrap">
-      <h1>Your app made promises.<span>Prove it keeps them.</span></h1>
-      <p class="sub">Pledge boots your app in a sandbox, throws retries, duplicate webhooks, races and restarts at it, then checks your data against the rules it must never break.</p>
+      <div class="hero-grid">
+        <div class="hero-copy">
+          <div class="eyebrow">Fault testing for your data</div>
+          <h1>Your app made promises.<span>Prove it keeps them.</span></h1>
+          <p class="sub">Pledge boots your app in a sandbox, throws retries, duplicate webhooks, races and restarts at it, then checks your data against the rules it must never break.</p>
 
-      <div class="join glass ticks" id="join">
-        <div class="join-head"><span>Join the waitlist</span><a href="#how">How a scan works ↓</a></div>
-        <Waitlist />
-        <p class="foot-note">First design-partner scans go out in waves. One email when it's your turn.</p>
+          <div class="join glass ticks" id="join">
+            <div class="join-head"><span>Join the waitlist</span><a href="#how">How a scan works ↓</a></div>
+            <Waitlist />
+            <p class="foot-note">First design-partner scans go out in waves. One email when it's your turn.</p>
+          </div>
+        </div>
+
+        <figure class="hero-figure">
+          <div class="figure-bar"><span>40 forks · 1 snapshot</span><output id="forks-read" aria-live="polite"></output></div>
+          <div id="forks"></div>
+          <figcaption>Each block is a fork of your app on its own seed. Point at them: the fault sweeps across, and the seeds where a pledge breaks stand up in red.</figcaption>
+        </figure>
       </div>
 
       <Demo />
@@ -285,5 +296,6 @@ const prSteps = [
   <script>
     import '../scripts/ui.ts';
     import '../scripts/demo.ts';
+    import '../scripts/hero-figure.ts';
   </script>
 </Base>
