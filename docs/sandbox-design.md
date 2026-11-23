@@ -14,6 +14,12 @@ One template per supported stack, starting with Node or Python plus Postgres and
 carries the runtimes, the database servers, k6, the LiteTraffic engine, the fault proxy and
 a process supervisor.
 
+The [Phase 0 spikes](./spikes/phase-0.md) settled three things about it: it also ships
+Docker, so an app with a Compose file runs as its repository defines; it must declare at
+least 2 GiB of RAM, because the default sandbox has 473 MiB; and it should take full
+snapshots, since a filesystem-only snapshot cold-boots and services do not come back on
+their own.
+
 ## Network
 
 Outbound access is open to package registries during install, then closed. The app can then

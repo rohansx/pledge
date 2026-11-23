@@ -21,8 +21,8 @@ each has its own controls.
   touches.
 - **Hard budgets.** Every scan has a cap on tokens, sandbox minutes and wall-clock time, and
   reports partial results when it hits one.
-- **Concurrency.** Parallel forks are limited by the E2B plan. Reported limits are 20
-  concurrent sandboxes on the free tier and 100 on Pro.
+- **Concurrency.** Parallel forks are limited by the E2B plan. E2B's billing page lists 10 concurrent
+  sandboxes on Hobby and 100 on Pro (read 23 November 2026; the overview quoted 20 and 100).
 
 ## Metrics to instrument from the first scan
 

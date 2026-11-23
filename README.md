@@ -26,6 +26,7 @@ fail. Deterministic checks on the app's data decide the verdict. A model never d
 | [Cost and performance](./docs/cost-and-performance.md) | Cost controls and the metrics to instrument from the first scan |
 | [Deployment](./docs/deployment.md) | Where it runs, the build-and-deploy pipeline, what is on hold |
 | [Plan and phases](./docs/plan.md) | Build order, exit criteria per phase, decisions still to make |
+| [Phase 0 spike results](./docs/spikes/phase-0.md) | What was measured on E2B: Compose, fork speed, closed network, SDK redirection |
 | [Open questions](./docs/open-questions.md) | Unverified assumptions that could change the design |
 
 ## The four design choices

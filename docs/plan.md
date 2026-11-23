@@ -27,7 +27,12 @@ Built ahead of the phases so that every later change ships the same way. A skele
 with images built on GitHub runners and a smoke test against the live URL. See
 [deployment](./deployment.md).
 
-## Phase 0: Spikes
+## Phase 0: Spikes (done)
+
+Run on 23 November 2026. Results and decisions are in [spikes/phase-0](./spikes/phase-0.md):
+Compose works and survives a fork, a fork takes a few seconds, outbound can be closed, and
+hard-coded SDK addresses can be redirected without touching the app. The base template
+ships Docker. What follows is the original brief.
 
 Answer the questions that decide whether the sandbox design holds at all. Throwaway code.
 
@@ -114,14 +119,20 @@ gets a pull request comment on their next change.
 - More stack templates; non-HTTP dependencies if Q-3 says they matter.
 - Pricing, from the metrics collected in phases 2 to 4.
 
+## Decisions made
+
+- **Languages: Python and TypeScript.** TypeScript for what people see and call: the
+  dashboard, the landing page and the API. Python for what drives sandboxes: the
+  orchestrator, the agent runner, the fault proxy and the fakes. The engine and the E2B SDK
+  used in the spikes are Python, so everything that runs in or next to a sandbox shares one
+  language. Decided 23 November 2026.
+- **Frontend: Vite + TypeScript**, not Next.js.
+- **Containers in the sandbox: allowed.** The base template ships Docker.
+
 ## Decisions still to make
 
 The overview leaves these open, so the plan does not assume them:
 
-- Language for the orchestrator, agent runner and fault proxy. The engine is Python. The
-  frontend is decided: Vite + TypeScript. The API skeleton is Node + TypeScript with no
-  framework; that was a default taken to get the pipeline running, and is cheap to change
-  while it is one endpoint.
 - The dashboard's UI library and where its static files are hosted.
 - Which stack the first base template supports.
 - Which providers get the first hand-written fakes. This needs the design partners named.
