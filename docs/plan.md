@@ -79,9 +79,10 @@ fault and is kept on the fixed version. Evidence shows expected and actual.
 
 ## Phase 2: Agent, discover, boot and author (first run done)
 
-Built and run once on the demo shop on 23 November 2026; see [phase-2](./phase-2.md). The
-exit criterion below is not met yet: it asks for repos, plural, and a measured boot success
-rate. What is still owed is a run on real repositories with dependencies to install. What
+Built and run on the demo shop and on one real repository, leadecho, on 23 November 2026;
+see [phase-2](./phase-2.md). Three boots out of three succeeded without human edits. That
+meets the letter of the exit criterion on two repositories; a boot success rate needs more
+repositories, written by other people. What
 follows is the original brief.
 
 Claude produces what phase 1 wrote by hand.

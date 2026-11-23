@@ -1,6 +1,6 @@
 # Phase 2 result: the agent boots a repo and authors its pledges
 
-Run on 23 November 2026, once, on one repository. Claude was given the demo shop with no
+Run on 23 November 2026: first on the demo shop, then twice on a real repository. Claude was given the demo shop with no
 boot recipe, no scenario and no pledges, and produced all three. Code, not Claude, decided
 when each phase was done.
 
@@ -80,15 +80,48 @@ The baseline passed. Then each faults file was run on five forked seeds:
 - **The overall verdict was `inconclusive` every time.** That is the design working: none of
   the pledges is approved, so none can block. The table above is what a reviewer would see.
 
+## Second repository: leadecho
+
+Run twice on 23 November 2026 against `rohansx/leadecho`, a real application: a Go 1.25
+backend of about 600 files with Postgres, Redis and several third-party services. Only
+tracked files from a fresh clone went into the sandbox.
+
+| Run | Boot | Author | Total | Scenarios | Pledges |
+|---|---|---|---|---|---|
+| 1 | 2.18M tokens, 47 commands, 8 min 5 s | 3.00M tokens, 7 min 8 s | 15 min 40 s | signup, billing, attribution | 11 |
+| 2 | 4.30M tokens, 63 commands, 15 min | 1.75M tokens, 5 min 43 s | 21 min 8 s | billing-webhooks, mention-pipeline | 7 |
+
+About 95% of those tokens were cache reads. Both phases were accepted on the first `finish`
+in both runs, and every baseline passed. In the boot phase Claude installed Go, Postgres and
+Redis and wrote its own fakes for the payment and email providers, which is the path the
+demo shop never exercised.
+
+The second run saved a snapshot of the booted sandbox, and its two scenarios were then
+scanned from that snapshot under their fault files on five forked seeds each:
+
+| Scenario | Faults | Result |
+|---|---|---|
+| billing-webhooks | retries on the webhook and checkout paths | 3 of 3 pledges kept on 5 of 5 seeds |
+| mention-pipeline | retries on signals, lead creation and reply drafts | 3 of 4 kept; `one-lead-per-mention` broken on 5 of 5 seeds |
+
+The broken pledge is a real defect, confirmed in the source. `POST /api/v1/leads` inserts a
+lead without looking for an existing one, and the `leads` table has no unique constraint on
+the mention, while other code paths that create leads do look first. A client that retries
+after a lost reply ends up with two leads for one mention: 5 or 6 of 20 journeys per seed.
+Claude flagged it as its own reading and asked a reviewer to confirm it is a rule.
+
+Two things this shows that the shop could not: the two runs wrote different scenarios and
+different pledges for the same repository, so authoring is not repeatable; and the boot
+phase alone cost between 2 and 4 million tokens.
+
 ## What this does not show
 
-- **One repository, one run.** The plan's exit criterion says "repos", and asks for a boot
-  success rate. This is one success out of one attempt, on an app with one file and nothing
-  to install. It is not a rate.
-- **The fake fit by construction.** The built-in payments fake was written for this shop in
-  Phase 1. Claude did not have to write a fake, so that path is untested.
-- **No real install.** Registries were open during boot but nothing was installed. Booting
-  an app with dependencies, a real database, migrations or a Compose file is untested.
+- **Two repositories, three boots.** All three succeeded, but three attempts on two apps is
+  not a boot success rate, and both apps were ones the same author wrote.
+- **Authoring is not repeatable.** Two runs on leadecho produced different scenarios and
+  pledges. Nothing yet says which set is better or how to merge them.
+- **No Compose boot.** Claude installed leadecho's services natively. Booting through a
+  repository's Compose file is untested.
 - **Claude ran the faults itself before finishing**, and said so in its summary. Its job was
   to write pledges the app ought to keep, not to hunt bugs. The pledges read as ones a
   reviewer would accept, but whether it wrote them from the code or from what it saw break
