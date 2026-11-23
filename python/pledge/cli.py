@@ -61,6 +61,7 @@ def _parser() -> argparse.ArgumentParser:
     scan.add_argument("--env", action="append", default=[], metavar="KEY=VALUE")
     scan.add_argument("--runs-dir", type=Path, default=Path("runs"))
     scan.add_argument("--json", action="store_true")
+    scan.add_argument("--snapshot", help="start from this saved sandbox; default: the one `pledge author` saved for this directory")
     scan.add_argument("--publish", action="store_true", help="send the result to the Pledge API for the dashboard")
     scan.add_argument("--app", help="name shown in the dashboard (default: the app directory's name)")
 
@@ -102,9 +103,10 @@ def main(argv: list[str] | None = None) -> int:
             print(json.dumps(report) if args.json else "\n".join(format_report(report)))
             return 0
         if args.command == "scan":
-            from pledge.scan import scan  # imported here: only this command needs the E2B SDK
+            from pledge.scan import authored_snapshot, scan  # imported here: only this command needs the E2B SDK
 
-            report = scan(args.app_dir, args.scenario, args.faults, args.seeds, _env(args.env), args.runs_dir)
+            snapshot = args.snapshot or authored_snapshot(args.app_dir.resolve())
+            report = scan(args.app_dir, args.scenario, args.faults, args.seeds, _env(args.env), args.runs_dir, snapshot)
         else:
             report = verdict(args.app_dir, args.runs)
         print(json.dumps(report) if getattr(args, "json", False) else "\n".join(format_verdict(report)))

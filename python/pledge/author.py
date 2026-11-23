@@ -76,6 +76,10 @@ def author(app_dir: Path, out_dir: Path) -> dict:
 
         _download(sandbox, APP, out_dir)
         _download(sandbox, RUNS, out_dir / ".pledge-runs")
+        # Boot once, fork many: the booted app, with everything the agent installed, is saved so that scans
+        # start from it instead of installing again (and so that they can run with outbound closed).
+        snapshot_id = sandbox.create_snapshot(mode="full").snapshot_id
+        log(f"snapshot {snapshot_id}")
     finally:
         try:
             sandbox.kill()
@@ -84,6 +88,7 @@ def author(app_dir: Path, out_dir: Path) -> dict:
     report = {
         "schema_version": 1,
         "out_dir": str(out_dir),
+        "snapshot_id": snapshot_id,
         "seconds": round(time.monotonic() - started, 1),
         "phases": [phase.to_json() for phase in phases],
         "baseline": phases[-1].check.get("baseline", []),
@@ -96,7 +101,7 @@ def author(app_dir: Path, out_dir: Path) -> dict:
 
 
 def format_report(report: dict) -> list[str]:
-    lines = [f"authored into {report['out_dir']} in {report['seconds']}s"]
+    lines = [f"authored into {report['out_dir']} in {report['seconds']}s", f"  snapshot: {report['snapshot_id']}"]
     for phase in report["phases"]:
         usage = phase["usage"]
         lines.append(

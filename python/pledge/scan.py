@@ -23,6 +23,12 @@ DENY_ALL = ["0.0.0.0/0"]
 SANDBOX_SECONDS = 15 * 60
 APP, PACKAGE, RUNS = "/work/app", "/opt/pledge", "/work/runs"
 PLEDGE = f"cd /work && PYTHONPATH={PACKAGE} python3 -m pledge.cli"
+# Fails unless the app still answers through the proxy, which it should straight out of a snapshot.
+CHECK_RUNNING = f"""cd /work && PYTHONPATH={PACKAGE} python3 -c "import json,sys,urllib.request,urllib.error
+target=json.load(open('app/pledge.boot.json'))['target']
+try: urllib.request.urlopen(target, timeout=10)
+except urllib.error.HTTPError: pass
+except Exception as exc: sys.exit('the app restored from the snapshot does not answer at '+target+': '+str(exc))" """
 SKIP = {".pledge-run", ".pledge-runs", "__pycache__", ".venv", "node_modules", ".git"}
 MAX_EVIDENCE_BYTES = 64 * 1024 * 1024
 
@@ -80,7 +86,17 @@ def _one_run(fork, scenario: str, faults: str | None, seed: int, runs_dir: Path)
     return {**summary, "run_dir": str(runs_dir / summary["run_id"])}
 
 
-def scan(app_dir: Path, scenario: str, faults_file: Path | None, seeds: int, env: dict[str, str], runs_dir: Path) -> dict:
+def authored_snapshot(app_dir: Path) -> str | None:
+    """The snapshot `pledge author` saved for this directory, if it was authored."""
+    report = app_dir / ".pledge-runs" / "author-report.json"
+    try:
+        return json.loads(report.read_text()).get("snapshot_id")
+    except (OSError, ValueError):
+        return None
+
+
+def scan(app_dir: Path, scenario: str, faults_file: Path | None, seeds: int, env: dict[str, str], runs_dir: Path, snapshot: str | None = None) -> dict:
+    """With `snapshot`, start from that saved, already-booted sandbox instead of uploading and booting the app."""
     from e2b import Sandbox
 
     if not 1 <= seeds <= 8:
@@ -92,6 +108,8 @@ def scan(app_dir: Path, scenario: str, faults_file: Path | None, seeds: int, env
             faults = faults_file.resolve().relative_to(app_dir).as_posix()
         except ValueError:
             raise ValueError("--faults must be a file inside the app directory, so that it is uploaded with it") from None
+    if snapshot and env:
+        raise ValueError("--env cannot change an app that is already running in a snapshot")
     load_key()
     runs_dir.mkdir(parents=True, exist_ok=True)
 
@@ -105,15 +123,21 @@ def scan(app_dir: Path, scenario: str, faults_file: Path | None, seeds: int, env
 
     # Closed from the first second: this app needs nothing from the internet to boot.
     # ponytail: an app that installs dependencies needs registries allowed during boot, then update_network.
-    sandbox = Sandbox.create(TEMPLATE, timeout=SANDBOX_SECONDS, network={"deny_out": DENY_ALL})
+    sandbox = Sandbox.create(snapshot or TEMPLATE, timeout=SANDBOX_SECONDS, network={"deny_out": DENY_ALL})
     forks: list = []
     try:
-        lap("create sandbox")
+        lap("restore snapshot" if snapshot else "create sandbox")
         _upload(sandbox, Path(__file__).resolve().parent, f"{PACKAGE}/pledge")
-        _upload(sandbox, app_dir, APP)
-        lap("upload")
-        boot_env = " ".join(f"--env {name}={value}" for name, value in env.items())
-        _sh(sandbox, f"{PLEDGE} boot app {boot_env}")
+        if snapshot:
+            # The app is running as it was when the snapshot was taken. Only what Pledge reads is refreshed.
+            _upload(sandbox, app_dir / ".pledge", f"{APP}/.pledge")
+            lap("upload")
+            _sh(sandbox, f"{CHECK_RUNNING}")
+        else:
+            _upload(sandbox, app_dir, APP)
+            lap("upload")
+            boot_env = " ".join(f"--env {name}={value}" for name, value in env.items())
+            _sh(sandbox, f"{PLEDGE} boot app {boot_env}")
         egress = _sh(sandbox, "curl -s -m 5 -o /dev/null -w '%{http_code}' https://example.com/ || true").strip()
         lap("boot")
         forks = sandbox.fork(count=seeds, timeout=SANDBOX_SECONDS)
@@ -133,4 +157,4 @@ def scan(app_dir: Path, scenario: str, faults_file: Path | None, seeds: int, env
                     pass
     report = verdict(app_dir, [Path(run["run_dir"]) for run in runs])
     timings["total"] = round(time.monotonic() - started, 2)
-    return {**report, "sandbox": {"template": TEMPLATE, "outbound_blocked": egress in ("000", ""), "seconds": timings}, "run_dirs": [run["run_dir"] for run in runs]}
+    return {**report, "sandbox": {"template": snapshot or TEMPLATE, "outbound_blocked": egress in ("000", ""), "seconds": timings}, "run_dirs": [run["run_dir"] for run in runs]}
