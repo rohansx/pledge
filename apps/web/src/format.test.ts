@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { checkRows, pledgeCount, satisfies, seconds, seedsCount, show, verdictSentence, when } from "./format.ts";
+import { checkRows, plain, pledgeCount, plural, satisfies, seconds, seedsCount, show, verdictSentence, when } from "./format.ts";
 
 test("satisfies follows the engine's matchers", () => {
   assert.equal(satisfies(0, 0), true);
@@ -67,4 +67,11 @@ test("when and seconds are short and human", () => {
   assert.equal(when("not a date", now), "");
   assert.equal(seconds(29.43), "29.4 s");
   assert.equal(seconds(126), "2 min 6 s");
+});
+
+test("plain drops markdown emphasis and code marks but keeps the words", () => {
+  assert.equal(plain("**Scenarios** (under `.pledge/scenarios/`):"), "Scenarios (under .pledge/scenarios/):");
+  assert.equal(plain("2 * 3 * 4 and a lone ` mark"), "2 * 3 * 4 and a lone ` mark");
+  assert.equal(plural(1, "seed"), "1 seed");
+  assert.equal(plural(3, "seed"), "3 seeds");
 });

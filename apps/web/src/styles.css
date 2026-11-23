@@ -159,7 +159,15 @@ h2 small { font: inherit; letter-spacing: 0; text-transform: none; color: var(--
 .evidence .seed-cell i.pass { background: var(--kept); }
 .evidence .seed-cell i.fail { background: var(--seal); }
 .evidence .note { font: 12px var(--mono); color: var(--mute); padding-top: 4px; }
-@media (max-width: 760px) { .pledge > button { grid-template-columns: 1fr; gap: 10px; } .pledge-tally { text-align: left; } }
+@media (max-width: 760px) {
+  .pledge > button { grid-template-columns: 1fr; gap: 10px; }
+  .pledge-tally { text-align: left; }
+  /* keep Expected and Actual on screen: let the long field names wrap instead */
+  .evidence table { font-size: 11px; table-layout: fixed; }
+  .evidence th:first-child { width: 58px; } .evidence th:nth-child(3), .evidence th:nth-child(4) { width: 62px; }
+  .evidence td, .evidence th { padding-right: 8px; overflow-wrap: anywhere; }
+  .evidence .seed-cell { white-space: normal; }
+}
 
 /* ---------- fault plan: the landing page's code panel ---------- */
 .plan { margin-top: 18px; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr); border-radius: var(--r-lg); overflow: hidden; border: 1px solid var(--line); }

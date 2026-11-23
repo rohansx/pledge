@@ -88,6 +88,15 @@ export function when(iso: string, now: Date = new Date()): string {
   return then.toLocaleDateString(undefined, { day: "numeric", month: "short" });
 }
 
+/** A model's summary arrives as light markdown. Show it as plain text: drop the emphasis and code marks. */
+export function plain(text: string): string {
+  return text.replace(/\*\*(.+?)\*\*/g, "$1").replace(/`([^`\n]+)`/g, "$1");
+}
+
+export function plural(count: number, noun: string): string {
+  return `${count} ${noun}${count === 1 ? "" : "s"}`;
+}
+
 export function seconds(value: number): string {
   return value >= 60 ? `${Math.floor(value / 60)} min ${Math.round(value % 60)} s` : `${Math.round(value * 10) / 10} s`;
 }

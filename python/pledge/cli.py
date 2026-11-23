@@ -107,7 +107,7 @@ def main(argv: list[str] | None = None) -> int:
             report = scan(args.app_dir, args.scenario, args.faults, args.seeds, _env(args.env), args.runs_dir)
         else:
             report = verdict(args.app_dir, args.runs)
-        print(json.dumps(report) if args.json else "\n".join(format_verdict(report)))
+        print(json.dumps(report) if getattr(args, "json", False) else "\n".join(format_verdict(report)))
         if args.command == "publish" or getattr(args, "publish", False):
             from pledge.publish import build_record, publish
 

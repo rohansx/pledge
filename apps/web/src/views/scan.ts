@@ -1,6 +1,6 @@
 import type { Scan, ScanPledge, ScanSeed, StoredScan } from "../api.ts";
 import { h } from "../dom.ts";
-import { checkRows, pledgeCount, seconds, thousands, verdictSentence, when } from "../format.ts";
+import { checkRows, plain, pledgeCount, plural, seconds, thousands, verdictSentence, when } from "../format.ts";
 import { seedSquares } from "./list.ts";
 
 const ORDER = { broken: 0, inconclusive: 1, kept: 2 };
@@ -29,7 +29,7 @@ function head(stored: StoredScan): HTMLElement {
       h("h1", {}, scan.app, h("span", {}, " / "), scan.scenario),
       h("p", { class: "head-say" }, verdictSentence(scan.verdict, scan.pledges.length, broken, approved)),
     ),
-    h("div", { class: "head-seeds" }, seedSquares(scan.runs.map((run) => run.verdict), true), h("p", {}, `${scan.runs.length} seeds, one square each`)),
+    h("div", { class: "head-seeds" }, seedSquares(scan.runs.map((run) => run.verdict), true), h("p", {}, `${plural(scan.runs.length, "seed")}, one square each`)),
     h("div", { class: "facts" }, ...facts.map(([name, value]) => h("span", {}, `${name} `, h("b", {}, value)))),
   );
 }
@@ -172,8 +172,8 @@ function authoring(scan: Scan): HTMLElement[] {
         ),
       ),
     ),
-    h("p", { class: "prose" }, report.summary),
-    report.open_questions.length > 0 ? h("ul", { class: "questions" }, ...report.open_questions.map((question) => h("li", {}, question))) : h("p", { class: "prose" }, "It raised no questions for a reviewer."),
+    h("p", { class: "prose" }, plain(report.summary)),
+    report.open_questions.length > 0 ? h("ul", { class: "questions" }, ...report.open_questions.map((question) => h("li", {}, plain(question)))) : h("p", { class: "prose" }, "It raised no questions for a reviewer."),
   ];
 }
 
