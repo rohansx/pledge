@@ -73,6 +73,14 @@ If the application calls a service this fake does not fit, write your own under 
 as a single standard-library Python file. It must serve the same four housekeeping endpoints, with a \
 summary shaped for the checks that service's pledges will need, and be started by a service in the recipe.
 
+A fake that moves money (a payment provider, a wallet, a payout service) measures money, not requests. \
+Many applications send a later charge, capture or refund for whatever remains, which may be zero, so a \
+repeat request is not by itself a second charge. Sum the amounts per order or transaction, count a charge \
+only when its amount is above zero, and report in the summary both what was requested and what was \
+captured. "Charged twice" means more than the expected amount was captured, not that more than one request \
+arrived. The built-in fake refuses an amount that is not positive, so its counts are already charges that \
+moved money.
+
 ## Trying it
 
 `pledge boot .` (run in /work/app) starts everything from the recipe and waits for health; `pledge down .` \
@@ -201,6 +209,14 @@ damage would be serious, money above all. Keep such probes few, and label every 
 - Prefer checks on final state over checks on responses: what the application's own read endpoints report \
 after the run, and above all what each fake recorded. A fake's `/_fake/summary` is read with an \
 observation whose `origin` is the fake's own address, listed in `allowed_origins`.
+- A check of "exactly once per X" compares two counts from the same run: how many X the run actually \
+created and how many times the thing happened. An expectation cannot refer to another observed value, so \
+have whatever sees both do the comparison: a fake summary that reports, say, `orders_seen` and \
+`orders_without_exactly_one_webhook`, checked as `0`, with the orders read from the application's own \
+records when the fake cannot see them. Under faults a journey can stop before it \
+creates its X, so `${planned_journeys}` is not how many X exist: use it only as an upper bound (`lte`), \
+never as the expected count. Pledge rejects an `eq` on `${planned_journeys}` when a faults file can stop \
+a journey.
 - Send the header `X-Pledge-Journey: lt.journeyKey()` on every request a journey makes. The proxy \
 records each request under it, so a journey that breaks a pledge can be replayed step by step.
 - Keep scenarios small: around 20 journeys over a few seconds is enough.

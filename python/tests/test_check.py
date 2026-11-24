@@ -129,6 +129,17 @@ def test_a_fault_on_an_app_route_the_inventory_omits_is_rejected_but_one_on_a_th
     assert len(found) == 1 and found[0].startswith("faults file lost-reply.json: it repeats POST /refunds, a route .pledge/callers.json does not list")
 
 
+def test_once_per_thing_must_count_what_the_run_created_not_the_journeys_planned(app):
+    observation = {"path": "/_fake/summary", "assertion": "one_webhook_per_order", "expected": {"/webhooks": "${planned_journeys}", "/max": {"lte": "${planned_journeys}"}}}
+    write(app, "scenarios/booking/manifest.json", {"observations": [observation]})
+
+    found = problems(app)
+    assert len(found) == 1 and found[0].startswith("scenario booking: assertion one_webhook_per_order expects exactly ${planned_journeys}")
+
+    write(app, "faults/lost-reply.json", {"description": "x", "faults": [{"kind": "duplicate", "target": "app POST /showings/*/bookings"}]})
+    assert problems(app) == []  # a second delivery stops no journey, so every planned one still creates its thing
+
+
 @pytest.mark.skipif(shutil.which("node") is None, reason="node is not installed")
 def test_browser_steps_must_load_and_stay_inside_the_sandbox(app):
     steps = app / ".pledge" / "scenarios" / "booking" / "browser.cjs"

@@ -119,6 +119,25 @@ def _unlisted(app_dir: Path, run_dir: Path, routes: dict[str, list[dict]]) -> li
     return sorted({f"{method} {ID_SEGMENT.sub('/*', path)}" for method, path in seen if not _listed(routes, method, path)})
 
 
+def _expects_every_journey(scenario: Path) -> list[str]:
+    """Assertions that expect a count to equal `${planned_journeys}`. Under faults a journey can fail before
+    it creates the thing counted, so "once per X" must compare against the X the run actually created."""
+    try:
+        manifest = json.loads((scenario / "manifest.json").read_text())
+        checks = [manifest["observation"]] if manifest.get("observation") else []
+        checks += manifest.get("observations", []) + manifest.get("stage_assertions", [])
+        found = []
+        for item in checks:
+            for value in item["expected"].values():
+                # A bare value is an `eq`, as LiteTraffic reads it.
+                matcher = value if isinstance(value, dict) and value and set(value) <= {"eq", "gte", "lte", "len", "exists"} else {"eq": value}
+                if isinstance(matcher.get("eq"), str) and "planned_journeys" in matcher["eq"]:
+                    found.append(item["assertion"])
+        return sorted(set(found))
+    except (OSError, ValueError, KeyError, TypeError, AttributeError):
+        return []  # the engine's own validation reports a malformed manifest
+
+
 def _browser_problems(steps: Path) -> list[str]:
     """Browser steps must at least parse, and must stay inside the sandbox, where nothing else answers."""
     name = f"scenario {steps.parent.name}: {steps.name}"
@@ -177,6 +196,7 @@ def check_author(app_dir: Path, runs_dir: Path) -> dict:
         if check["scenario"] not in assertions and not any(f"scenario {check['scenario']}:" in problem for problem in problems):
             problems.append(f"pledge {pledge['id']}: there is no scenario {check['scenario']}")
 
+    can_stop_journeys = False  # any fault but a second delivery can show a journey an error it gives up on
     for path in sorted((app_dir / ".pledge" / "faults").glob("*.json")):
         try:
             plan = parse_plan({"schema_version": 1, "seed": 0, "faults": json.loads(path.read_text())["faults"]})
@@ -188,11 +208,16 @@ def check_author(app_dir: Path, runs_dir: Path) -> dict:
         except (PlanError, local.BootError, ValueError, KeyError, TypeError) as exc:
             problems.append(f"faults file {path.name}: {exc}")
             continue
+        can_stop_journeys = can_stop_journeys or any(fault.kind != "duplicate" for fault in plan.faults)
         for fault in plan.faults:
             # A fault on the application's own route stands for something a caller does, so the caller must be on record.
             # ponytail: the application's route is taken to be named `app`, as verdict.app_down takes it.
             if routes and fault.route == "app" and not _listed(routes, fault.method, fault.path):
                 problems.append(f"faults file {path.name}: it repeats {fault.method} {fault.path}, a route {CALLERS_FILE} does not list (a `*` there stands for one path segment)")
+    if can_stop_journeys:
+        for scenario in scenario_dirs:
+            for assertion in _expects_every_journey(scenario):
+                problems.append(f"scenario {scenario.name}: assertion {assertion} expects exactly ${{planned_journeys}}, but under faults a journey can stop before it creates what is counted; compare against how many were created in the same run, or use `lte`")
 
     baseline = []
     if not problems:  # only run what already validates
