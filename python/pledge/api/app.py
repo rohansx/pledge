@@ -154,7 +154,7 @@ def create_app(store: Store, token: str | None, version: str = "dev", public_url
     def runs(repo_id: str) -> JSONResponse:
         logic._need(store, "repo", repo_id)
         catalogue = logic._pledges(store, repo_id)
-        return ok([logic.run_row(run, catalogue) for run in store.list("run", repo_id)])
+        return ok([logic.run_row(run, catalogue) for run in logic._runs(store, repo_id)])
 
     @api.post("/repos/{repo_name}/runs")
     def start_run(repo_name: str, start: RunStartIn) -> JSONResponse:

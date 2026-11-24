@@ -81,6 +81,42 @@ def app_down(run_dir: Path) -> bool:
     return len(unfaulted) >= DOWN_MIN_REQUESTS and not any(200 <= entry["returned_status"] < 400 for entry in unfaulted)
 
 
+def unfired(run_dir: Path) -> bool:
+    """True when the run had a fault plan and the proxy injected nothing: the plan's targets were never called
+    (a plan written for another scenario's routes), so a check that passed says nothing about the plan."""
+    plan, injected = run_dir / "fault_plan.json", run_dir / "pledge" / "proxy_injected.json"
+    if not plan.is_file() or not json.loads(plan.read_text()).get("faults"):
+        return False
+    return not (injected.is_file() and json.loads(injected.read_text()))
+
+
+def unread(row: dict) -> bool:
+    """True when a per-journey check failed without ever reading the value it compares: every failing journey
+    said what it expected and recorded no `actual` (the record it was to count on was not found, or the call
+    before it failed). Seen on umami, where a team missing from a list read left its owner count null.
+    ponytail: the engine keeps a few failing samples per check; with more failures than samples the rest are
+    unseen, so the check stays failed. A check that records no values at all stays failed too."""
+    failures = row.get("failures") or []
+    blind = all(sample.get("expected") is not None and sample.get("actual") is None for sample in failures)
+    return row["status"] == "fail" and bool(failures) and row.get("failed", 0) <= len(failures) and blind
+
+
+def mark(row: dict, fired: bool) -> str:
+    """What one assertion of one run counts as. Only ever moves a result to unknown, never to pass or fail."""
+    return "unknown" if (row["status"] == "pass" and not fired) or unread(row) else row["status"]
+
+
+def discount(counts: dict, result: dict, fired: bool) -> None:
+    """Move what `mark` calls unknown out of the engine's pass and fail counts for one run."""
+    for row in result["assertions"]:
+        entry = counts["assertions"].get(row["id"])
+        if entry is None or mark(row, fired) == row["status"]:
+            continue
+        entry[row["status"]] -= 1
+        entry["unknown"] += 1
+        entry["failed_runs"] = [run for run in entry["failed_runs"] if run.get("run_id") != result["run_id"]]
+
+
 def verdict(app_dir: Path, run_dirs: list[Path]) -> dict:
     scenarios = {json.loads((run_dir / "run.json").read_text())["scenario"] for run_dir in run_dirs}
     if len(scenarios) != 1:
@@ -93,11 +129,15 @@ def verdict(app_dir: Path, run_dirs: list[Path]) -> dict:
     for pledge in pledges:
         if pledge["check"]["scenario"] == scenario and not healthy:
             counts["assertions"][pledge["check"]["assertion"]] = {"pass": 0, "fail": 0, "unknown": 0, "failed_runs": []}
+    quiet = [run_dir for run_dir in healthy if unfired(run_dir)]
+    for run_dir in healthy:
+        discount(counts, json.loads((run_dir / "result.json").read_text()), run_dir not in quiet)
     for entry in counts["assertions"].values():
         entry["unknown"] += len(down)
     counts["runs"] = len(run_dirs)
     report = judge(pledges, counts, scenario)
     report["app_down_seeds"] = sorted(json.loads((run_dir / "result.json").read_text())["seed"] for run_dir in down)
+    report["unfired_seeds"] = sorted(json.loads((run_dir / "result.json").read_text())["seed"] for run_dir in quiet)
     return report
 
 
@@ -105,6 +145,8 @@ def format_verdict(report: dict) -> list[str]:
     lines = [f"{report['verdict'].upper()}  scenario {report['scenario']}  {report['runs']} runs"]
     if report.get("app_down_seeds"):
         lines.append(f"  the app was down (no request succeeded) on seeds {report['app_down_seeds']}: counted as unknown")
+    if report.get("unfired_seeds"):
+        lines.append(f"  the fault plan injected nothing on seeds {report['unfired_seeds']}: checks that passed there are counted as unknown")
     for row in report["pledges"]:
         if "kept" not in row:
             lines.append(f"  {row['id']}: inconclusive ({row['reason']})")

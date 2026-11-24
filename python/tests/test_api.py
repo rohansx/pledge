@@ -23,17 +23,17 @@ def pledge(key, result, status="proposed", seeds=("fail",)):
     }
 
 
-def result(pledges, faults="lost-reply", seeds=1):
+def result(pledges, faults="lost-reply", seeds=1, injected=10, authoring=None):
     return {
-        "schema_version": 1, "scenario": "checkout", "env": {}, "sandbox": {"template": "pledge-base", "outbound_blocked": True, "seconds": {"total": 29.4}}, "authoring": None,
+        "schema_version": 1, "scenario": "checkout", "env": {}, "sandbox": {"template": "pledge-base", "outbound_blocked": True, "seconds": {"total": 29.4}}, "authoring": authoring,
         "faults": {"name": faults, "description": "Replies are lost.", "faults": [{"kind": "retry", "target": "app POST /payments", "params": {"rate": 0.5}}]} if faults else None,
         "pledges": pledges,
-        "runs": [{"seed": n + 1, "run_id": f"r{n + 1}", "verdict": "fail", "faults_injected": 10, "journeys": 20, "requests": 60, "unexpected_failures": 0, "limitations": []} for n in range(seeds)],
+        "runs": [{"seed": n + 1, "run_id": f"r{n + 1}", "verdict": "fail", "faults_injected": injected, "journeys": 20, "requests": 60, "unexpected_failures": 0, "limitations": []} for n in range(seeds)],
     }
 
 
-def scan(client, pledges, repo="shop", **kwargs):
-    run = client.post(f"/api/repos/{repo}/runs", json={"trigger": "manual"}).json()["data"]
+def scan(client, pledges, repo="shop", trigger="manual", **kwargs):
+    run = client.post(f"/api/repos/{repo}/runs", json={"trigger": trigger}).json()["data"]
     done = client.post(f"/api/runs/{run['id']}/result", json=result(pledges, **kwargs))
     assert done.status_code == 201, done.json()
     return done.json()["data"]
@@ -178,6 +178,130 @@ def test_a_pledges_standing_comes_from_the_run_under_faults_not_a_newer_baseline
     assert (row["lastVerdict"], row["lastFaults"]) == ("broken", "lost-reply")
     detail = client.get(f"/api/pledges/{row['id']}").json()["data"]
     assert [(point["faults"], point["result"]) for point in detail["history"]] == [(None, "kept"), ("lost-reply", "broken")]
+
+
+KEPT = {"seeds": ("pass",)}
+
+
+def test_a_run_under_another_fault_plan_neither_hides_a_broken_pledge_nor_verifies_its_finding(client):
+    scan(client, [pledge("one-charge", "broken")], faults="lost-reply")
+    scan(client, [pledge("one-charge", "kept", **KEPT)], faults="slow-db")
+
+    row = client.get("/api/repos/shop/pledges").json()["data"][0]
+    finding = client.get("/api/repos/shop/findings").json()["data"][0]
+    headline = client.get("/api/repos/shop/overview").json()["data"]["headline"]
+
+    assert (row["lastVerdict"], row["lastFaults"]) == ("broken", "lost-reply")
+    assert (finding["status"], finding["faults"]) == ("open", "lost-reply")
+    assert (headline["kept"], len(headline["broken"])) == (0, 1)
+
+
+def test_a_finding_broken_under_two_fault_plans_is_verified_only_when_both_keep_it(client):
+    scan(client, [pledge("one-charge", "broken")], faults="lost-reply")
+    scan(client, [pledge("one-charge", "broken", seeds=("fail", "fail"))], faults="slow-db", seeds=2)
+    finding = lambda: client.get("/api/repos/shop/findings").json()["data"][0]  # noqa: E731
+    assert (finding()["faults"], finding()["brokenSeeds"]) == ("slow-db", [1, 2])
+
+    scan(client, [pledge("one-charge", "kept", **KEPT)], faults="slow-db")
+    # Still broken under the first plan, and the finding now shows that run's evidence, not the fixed one's.
+    assert (finding()["status"], finding()["faults"], finding()["brokenSeeds"], finding()["totalSeeds"]) == ("open", "lost-reply", [1], 1)
+
+    scan(client, [pledge("one-charge", "kept", **KEPT)], faults="lost-reply")
+    assert finding()["status"] == "verified"
+    assert [step["status"] for step in client.get(f"/api/findings/{finding()['id']}").json()["data"]["history"]] == ["open", "verified"]
+
+
+def test_a_check_that_passed_while_the_fault_plan_injected_nothing_is_unknown(client):
+    scan(client, [pledge("one-charge", "broken")])
+    quiet = scan(client, [pledge("one-charge", "kept", **KEPT), pledge("pays", "kept", **KEPT)], injected=0)
+
+    assert (quiet["verdict"], quiet["unfiredSeeds"]) == ("inconclusive", [1])
+    assert [(r["result"], r["kept"], r["unknown"], r["seeds"][0]["status"]) for r in quiet["results"]] == [("inconclusive", 0, 1, "unknown")] * 2
+    assert "injected no fault on this seed" in quiet["seedRuns"][0]["limitations"][0]
+    pledges = {p["key"]: p["lastVerdict"] for p in client.get("/api/repos/shop/pledges").json()["data"]}
+    assert pledges == {"one-charge": "broken", "pays": "inconclusive"}
+    assert client.get("/api/repos/shop/findings").json()["data"][0]["status"] == "open"  # nothing was injected, so nothing was fixed
+
+    # A baseline has no plan to fire, and a failure with nothing injected is still a failure.
+    assert scan(client, [pledge("pays", "kept", **KEPT)], faults=None, injected=0)["results"][0]["result"] == "kept"
+    assert scan(client, [pledge("pays", "broken")], injected=0)["results"][0]["result"] == "broken"
+
+
+def test_a_failure_that_never_read_its_value_is_unknown_and_opens_no_finding(client):
+    # umami, team-has-one-owner: the team was missing from the list read, so its owners were never counted.
+    unread = {"seed": 4, "run_id": "r4", "status": "fail", "expected": 1, "failed": 1}
+    blind = pledge("team-has-one-owner", "broken", seeds=("pass", "pass", "pass"))
+    blind.update(broken=1, seeds=[*blind["seeds"], unread])
+    # Fourteen journeys failed and one sample was sent: the others may have read a value, so this stays broken.
+    partly = pledge("website-created-once", "broken", seeds=())
+    partly.update(broken=1, seeds=[{**unread, "failed": 14}])
+
+    run = scan(client, [blind, partly], seeds=4)
+
+    results = {r["pledgeId"].rsplit("~", 1)[1]: r for r in run["results"]}
+    assert (results["team-has-one-owner"]["result"], results["team-has-one-owner"]["broken"], results["team-has-one-owner"]["unknown"]) == ("inconclusive", 0, 1)
+    assert results["website-created-once"]["result"] == "broken"
+    assert run["summary"]["pledgesBroken"] == 1
+    assert [f["pledgeKey"] for f in client.get("/api/repos/shop/findings").json()["data"]] == ["website-created-once"]
+
+
+def test_authoring_time_belongs_to_the_first_scan_not_to_every_run_published_after_it(client):
+    authoring = {"seconds": 1238.7, "phases": [], "summary": "wrote one scenario", "open_questions": []}
+
+    first = scan(client, [pledge("one-charge", "kept", **KEPT)], trigger="first_scan", authoring=authoring)
+    later = scan(client, [pledge("one-charge", "kept", **KEPT)], authoring=authoring)
+
+    assert (first["durationSeconds"], first["authored"], first["authoring"]["seconds"]) == (1268.1, True, 1238.7)
+    assert (later["durationSeconds"], later["authored"], later["authoring"]) == (29.4, False, None)
+    assert [row["durationSeconds"] for row in client.get("/api/repos/shop/runs").json()["data"]] == [29.4, 1268.1]
+
+
+def test_a_run_not_heard_from_for_two_hours_reads_as_abandoned():
+    from datetime import UTC, datetime, timedelta
+
+    store = MemoryStore()
+    client = TestClient(create_app(store, TOKEN), headers=AUTH)
+    run = client.post("/api/repos/shop/runs", json={"trigger": "manual"}).json()["data"]
+    old = (datetime.now(UTC) - timedelta(hours=2, minutes=1)).isoformat()
+    store._events[0]["at"] = old  # its only sign of life: the event that registered it
+    read = lambda: client.get(f"/api/runs/{run['id']}").json()["data"]  # noqa: E731
+
+    assert (read()["phase"], read()["failure"], read()["verdict"]) == ("failed", "abandoned", None)
+    assert client.get("/api/repos/shop/runs").json()["data"][0]["failure"] == "abandoned"
+    assert client.get("/api/repos/shop/overview").json()["data"]["runningRunId"] is None
+
+    # Nothing was written: a run that was only slow speaks again and is running again, and can still finish.
+    client.post(f"/api/runs/{run['id']}/events", json={"type": "phase_step", "payload": {}})
+    assert (read()["phase"], read()["failure"]) == ("run", None)
+    store._events[-1]["at"] = old
+    assert client.post(f"/api/runs/{run['id']}/result", json=result([pledge("p", "kept", **KEPT)])).status_code == 201
+    assert read()["phase"] == "done"
+
+
+def test_the_headline_the_pledge_list_and_the_open_findings_agree_on_a_mixed_history(client):
+    names = ("a", "b", "c", "d", "e", "f")
+    scan(client, [pledge(name, "kept", **KEPT) for name in names], faults=None)
+    scan(client, [pledge("a", "broken"), pledge("b", "broken"), pledge("c", "broken"), pledge("d", "kept", **KEPT), pledge("f", "broken")], faults="lost-reply")
+    scan(client, [pledge("a", "kept", **KEPT), pledge("b", "kept", **KEPT), pledge("c", "kept", **KEPT), pledge("e", "broken")], faults="slow-db")
+    scan(client, [pledge("a", "kept", **KEPT), pledge("b", "kept", **KEPT)], faults="lost-reply", injected=0)  # proves nothing
+    scan(client, [pledge("c", "kept", **KEPT)], faults="lost-reply")  # c is fixed
+    scan(client, [pledge(name, "kept", **KEPT) for name in names], faults=None)  # a newer baseline hides nothing
+    retired = next(p["id"] for p in client.get("/api/repos/shop/pledges").json()["data"] if p["key"] == "f")
+    client.patch(f"/api/pledges/{retired}", json={"action": "retire"})  # f is no longer a rule
+
+    overview = client.get("/api/repos/shop/overview").json()["data"]
+    pledges = client.get("/api/repos/shop/pledges").json()["data"]
+    findings = client.get("/api/repos/shop/findings").json()["data"]
+    listed = client.get("/api/repos").json()["data"][0]
+
+    broken = sorted(row["key"] for row in overview["headline"]["broken"])
+    assert broken == ["a", "b", "e"]
+    assert (overview["headline"]["kept"], overview["headline"]["total"]) == (2, 5)
+    assert sorted(p["key"] for p in pledges if p["lastVerdict"] == "broken" and p["status"] != "retired") == broken
+    assert sorted(f["pledgeKey"] for f in findings if f["status"] != "verified") == broken
+    assert overview["counters"]["openFindings"] == listed["openFindings"] == len(broken)
+    assert [(f["pledgeKey"], f["status"]) for f in findings if f["status"] == "verified"] == [("c", "verified")]
+    assert overview["counters"]["bugsCaught"] == len(findings) == 4
 
 
 def test_overview_answers_whether_it_is_safe_to_ship_in_one_call(client):
