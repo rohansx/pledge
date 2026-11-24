@@ -97,7 +97,7 @@ def _publish_baselines(args: argparse.Namespace, report: dict, live) -> None:
     out = args.out.resolve()
     for index, baseline in enumerate(report["baseline"]):
         run_dir = out / ".pledge-runs" / "baseline" / baseline["run_id"]
-        record = build_record(out, verdict(out, [run_dir]), [run_dir], None, {})
+        record = build_record(out, verdict(out, [run_dir]), [run_dir], None, {}, authored=index == 0)
         target = live if index == 0 else LiveRun(live.repo_id, "first_scan", "run", baseline["scenario"], 1)
         target.finish(record)
         print(f"published: {target.url}", file=sys.stderr)

@@ -93,3 +93,69 @@ def test_a_run_is_app_down_only_when_no_unfaulted_request_succeeded(tmp_path):
     assert not app_down(traffic_run(tmp_path, "too-few", [500] * 4))
     assert not app_down(traffic_run(tmp_path, "only-faults-failed", [200] * 6, faulted=[1] * 6))
     assert not app_down(tmp_path)  # no traffic log at all: an older run, judged as before
+
+
+def fault_run(tmp_path, name, faults, injected):
+    run_dir = tmp_path / name
+    (run_dir / "pledge").mkdir(parents=True)
+    (run_dir / "fault_plan.json").write_text(json.dumps({"schema_version": 1, "seed": 1, "faults": faults}))
+    if injected is not None:
+        (run_dir / "pledge" / "proxy_injected.json").write_text(json.dumps(injected))
+    return run_dir
+
+
+def test_a_run_is_unfired_only_when_it_had_a_fault_plan_that_injected_nothing(tmp_path):
+    from pledge.verdict import unfired
+
+    plan = [{"kind": "retry", "target": "app POST /items", "params": {"rate": 0.5}}]
+    assert unfired(fault_run(tmp_path, "other-scenarios-routes", plan, []))
+    assert unfired(fault_run(tmp_path, "no-injection-log", plan, None))
+    assert not unfired(fault_run(tmp_path, "fired", plan, [{"kind": "retry"}]))
+    assert not unfired(fault_run(tmp_path, "baseline", [], []))
+    assert not unfired(tmp_path)  # no plan recorded at all
+
+
+# umami, seed 4 under lost-send-replies: the created team was missing from the list read, so the scenario had
+# no team to count owners on and recorded no actual.
+UNREAD = {"id": "team_has_one_owner", "status": "fail", "failed": 1, "samples": 20, "failures": [{"expected": 1, "actual": None, "logical_key": "j-15"}]}
+MISSING = {"id": "team_created_once", "status": "fail", "failed": 1, "samples": 20, "failures": [{"expected": 1, "actual": 0, "logical_key": "j-15"}]}
+
+
+def test_a_failure_counts_as_unknown_only_when_no_failing_journey_read_a_value():
+    from pledge.verdict import mark
+
+    assert mark(UNREAD, True) == "unknown"
+    assert mark(MISSING, True) == "fail"  # it read the list and counted none: a value, and a real failure
+    assert mark(UNREAD | {"failed": 14}, True) == "fail"  # thirteen failures the samples do not show
+    assert mark(UNREAD | {"failures": [*UNREAD["failures"], MISSING["failures"][0]], "failed": 2}, True) == "fail"
+    assert mark({"id": "stock_total", "status": "fail", "expected": 5, "actual": None}, True) == "fail"  # a whole-run observation is left alone
+    assert mark(UNREAD | {"failures": [{"logical_key": "j-15"}]}, True) == "fail"  # a check that records no values is not one that could not read
+    assert mark({"id": "x", "status": "pass"}, True) == "pass"
+    assert mark({"id": "x", "status": "pass"}, False) == "unknown"  # the plan injected nothing
+    assert mark(MISSING, False) == "fail"  # a failure needs no fault to be real
+
+
+def test_discounting_a_run_moves_its_unread_failures_and_unfired_passes_to_unknown():
+    from pledge.verdict import discount
+
+    tallied = counts(runs=2, team_has_one_owner=(1, 1), team_created_once=(1, 1), pays=(2, 0))
+    run = {"run_id": "r0", "assertions": [UNREAD, MISSING, {"id": "pays", "status": "pass"}, {"id": "not_tallied", "status": "pass"}]}
+
+    discount(tallied, run, fired=False)
+
+    assert tallied["assertions"]["team_has_one_owner"] == {"pass": 1, "fail": 0, "unknown": 1, "failed_runs": []}
+    assert tallied["assertions"]["team_created_once"] == {"pass": 1, "fail": 1, "unknown": 0, "failed_runs": [{"run_id": "r0", "seed": 0}]}
+    assert tallied["assertions"]["pays"] == {"pass": 1, "fail": 0, "unknown": 1, "failed_runs": []}
+    report = judge([pledge("owner", "team_has_one_owner"), pledge("created", "team_created_once")], tallied, "checkout")
+    assert [(row["id"], row["result"]) for row in report["pledges"]] == [("owner", "inconclusive"), ("created", "broken")]
+
+
+def test_a_published_seed_shows_a_sample_that_read_a_value_and_is_unknown_when_none_did():
+    from pledge.publish import _seed
+
+    run = {"seed": 4, "run_id": "r4", "assertions": [UNREAD, UNREAD | {"id": "mixed", "failed": 2, "failures": [*UNREAD["failures"], MISSING["failures"][0]]}, {"id": "pays", "status": "pass"}]}
+
+    assert _seed(run, "team_has_one_owner") == {"seed": 4, "run_id": "r4", "status": "unknown", "expected": 1, "failed": 1}
+    assert _seed(run, "mixed") == {"seed": 4, "run_id": "r4", "status": "fail", "expected": 1, "actual": 0, "failed": 2}
+    assert _seed(run, "pays", fired=False)["status"] == "unknown"
+    assert _seed(run, "pays")["status"] == "pass"

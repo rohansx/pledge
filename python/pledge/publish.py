@@ -16,7 +16,7 @@ import urllib.request
 from pathlib import Path
 
 from pledge.recording import recording
-from pledge.verdict import app_down
+from pledge.verdict import app_down, mark, unfired
 
 DEFAULT_API = "https://app.pledge.sh"
 TOKEN_FILE = Path.home() / ".config/workz/pledge.env"
@@ -29,13 +29,15 @@ def _bounded(value: object) -> object:
     return value if len(text) <= MAX_VALUE_CHARS else text[: MAX_VALUE_CHARS - 20] + "... [cut]"
 
 
-def _seed(result: dict, assertion: str) -> dict:
+def _seed(result: dict, assertion: str, fired: bool = True) -> dict:
     row = next((row for row in result["assertions"] if row["id"] == assertion), None)
-    entry: dict = {"seed": result["seed"], "run_id": result["run_id"], "status": row["status"] if row else "unknown"}
+    entry: dict = {"seed": result["seed"], "run_id": result["run_id"], "status": mark(row, fired) if row else "unknown"}
     if row is None:
         return entry
     # An observation carries expected/actual itself; a per-journey check carries them on its failing samples.
-    sample = row if "expected" in row or "actual" in row else (row.get("failures") or [{}])[0]
+    # A sample that read a value is the one worth showing: one that read nothing says only that it could not look.
+    failures = row.get("failures") or [{}]
+    sample = row if "expected" in row or "actual" in row else next((item for item in failures if item.get("actual") is not None), failures[0])
     for key in ("expected", "actual"):
         if sample.get(key) is not None:
             entry[key] = _bounded(sample[key])
@@ -68,11 +70,14 @@ def seed_counts(run_dir: Path) -> dict:
     return {"seed": result["seed"], "kept": statuses.count("pass"), "broken": statuses.count("fail")}
 
 
-def build_record(app_dir: Path, report: dict, run_dirs: list[Path], faults_file: Path | None, env: dict[str, str]) -> dict:
-    """The run's result as the API wants it. `report` is what `pledge.verdict.verdict` returned."""
+def build_record(app_dir: Path, report: dict, run_dirs: list[Path], faults_file: Path | None, env: dict[str, str], authored: bool = False) -> dict:
+    """The run's result as the API wants it. `report` is what `pledge.verdict.verdict` returned. `authored` is
+    true only for the run that did the authoring: the author's report stays in the app directory afterwards,
+    and its minutes are not every later scan's."""
     pairs = sorted(((run_dir, json.loads((run_dir / "result.json").read_text())) for run_dir in run_dirs), key=lambda pair: pair[1]["seed"])
     run_dirs, results = [pair[0] for pair in pairs], [pair[1] for pair in pairs]
     down = {result["seed"] for run_dir, result in pairs if app_down(run_dir)}
+    quiet = {result["seed"] for run_dir, result in pairs if unfired(run_dir)}
     runs = []
     for run_dir, result in zip(run_dirs, results):
         injected = run_dir / "pledge" / "proxy_injected.json"
@@ -91,7 +96,7 @@ def build_record(app_dir: Path, report: dict, run_dirs: list[Path], faults_file:
             "id": row["id"], "statement": row["statement"][:1000], "status": row["status"], "source": row["source"],
             "confidence": row["confidence"], "assertion": row["assertion"], "result": row["result"],
             "kept": row["kept"], "broken": row["broken"], "unknown": row["unknown"],
-            "seeds": [_seed(result, row["assertion"]) if result["seed"] not in down else {"seed": result["seed"], "run_id": result["run_id"], "status": "unknown"} for result in results],
+            "seeds": [_seed(result, row["assertion"], result["seed"] not in quiet) if result["seed"] not in down else {"seed": result["seed"], "run_id": result["run_id"], "status": "unknown"} for result in results],
         }
         for row in report["pledges"] if "kept" in row
     ]
@@ -108,7 +113,7 @@ def build_record(app_dir: Path, report: dict, run_dirs: list[Path], faults_file:
         "schema_version": 1, "scenario": report["scenario"], "faults": faults, "env": env, "pledges": pledges,
         "runs": sorted(runs, key=lambda run: run["seed"]),
         "sandbox": sandbox and {key: sandbox[key] for key in ("template", "outbound_blocked", "seconds")},
-        "authoring": _authoring(app_dir),
+        "authoring": _authoring(app_dir) if authored else None,
     }
 
 

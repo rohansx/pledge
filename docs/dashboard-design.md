@@ -381,7 +381,7 @@ section is a comparison, not part of the design.
 | Information architecture | The routes in section 4, as real paths. Top bar with the repo switcher, left rail with the six tabs, badges on Findings and Pledges |
 | API contract | The paths in section 6, computed server-side: one call per tab |
 | Run strip | On Overview, the repo picker, Findings, Runs and in the pull request comment, in the same words |
-| Rules | Only an approved pledge makes a run broken. Approving an unproven pledge needs an override, recorded with a note. A finding is verified only by a later run |
+| Rules | Only an approved pledge makes a run broken. Approving an unproven pledge needs an override, recorded with a note. A finding is verified only by a later run under the fault plan that broke it. A pledge's standing is the worst of its latest conclusive result under each fault plan, and the headline, the pledge list and the open findings are read off that one computation. A check that passed on a seed where the fault plan injected nothing, or failed without reading a value, counts as unknown. A run not heard from for two hours reads as failed, "abandoned". Authoring time counts only on the first scan |
 
 ### Different from the design
 

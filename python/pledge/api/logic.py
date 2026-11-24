@@ -4,16 +4,23 @@ Writes: a run is registered, emits events while it works, and finishes with per-
 updates the pledge catalogue and opens, reopens or verifies findings. Reads: the views each dashboard tab
 needs, derived here so the browser gets one call per tab.
 
-Two rules live here and nowhere else:
+Rules that live here and nowhere else:
   * only an approved pledge can make a run's verdict "broken";
-  * a finding becomes "verified" only when a later run keeps its pledge on every seed.
+  * a pledge's standing is the worst of its latest conclusive result under each fault plan, and the headline,
+    the pledge list and the findings are all read off that one computation (`_plans`);
+  * a finding becomes "verified" only when a later run, under the fault plan that broke it, keeps its pledge
+    on every seed;
+  * a check that passed while its fault plan injected nothing, or failed without reading a value, is unknown.
+
+Stored runs keep what was measured. `_read` is the one place that interprets them, at read time, so a rule
+that changes here corrects every run already published.
 """
 
 from __future__ import annotations
 
 import re
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 
 from pledge.api.models import EventIn, FindingPatch, PledgePatch, RunResultIn, RunStartIn
 from pledge.api.store import Store, now
@@ -23,6 +30,9 @@ SOURCES = {"stated": "code", "domain_template": "template", "inferred": "inferre
 HISTORY_RUNS = 20
 LATEST = 5
 TREND_WEEKS = 12
+ABANDONED_AFTER = timedelta(hours=2)
+UNFIRED_NOTE = "The fault plan injected no fault on this seed, so a check that passed here proves nothing: counted as unknown."
+RANK = {"broken": 0, "kept": 1, "inconclusive": 2}
 
 
 class NotFound(LookupError):
@@ -103,12 +113,15 @@ def finish_run(store: Store, run_id: str, result: RunResultIn) -> dict:
         pledge.update(statement=item.statement, source=SOURCES.get(item.source, "inferred"), confidence=item.confidence, assertion=item.assertion, updated_at=stamp)
         store.put("pledge", pledge)
         results.append({"pledge_id": pledge_id, "result": item.result, "kept": item.kept, "broken": item.broken, "unknown": item.unknown, "seeds": [seed.model_dump(exclude_none=True) for seed in item.seeds], "recording": item.recording.model_dump() if item.recording else None})
-        finding = _update_finding(store, run, pledge, item, faults_name, stamp)
-        if finding and item.result == "broken":
-            finding_ids.append(finding["id"])
 
     run.update(phase="done", finished_at=stamp, scenario=result.scenario, faults_name=faults_name, record=result.model_dump(exclude={"pledges"}), results=results)
     store.put("run", run)
+    # Findings follow the standing, which now includes this run, so they can never say something it does not.
+    plans = _plans(_runs(store, repo_id))
+    for item in _read(store, run)["results"]:
+        finding = _update_finding(store, run, item, plans, stamp)
+        if finding and item["result"] == "broken":
+            finding_ids.append(finding["id"])
     view = run_view(store, run)
     store.add_event(run_id, "run_finished", {"verdict": view["verdict"], "summary": view["summary"], "finding_ids": finding_ids})
     return view
@@ -127,42 +140,44 @@ def add_media(store: Store, run_id: str, name: str, content_type: str, data: byt
     return run["media"]
 
 
-def _update_finding(store: Store, run: dict, pledge: dict, item, faults_name: str | None, stamp: str) -> dict | None:
+def _update_finding(store: Store, run: dict, result: dict, plans: dict[str, dict], stamp: str) -> dict | None:
     """Open, reopen or verify the finding for one pledge after a run. One finding per pledge at a time."""
-    existing = next((finding for finding in store.list("finding", run["repo_id"]) if finding["pledge_id"] == pledge["id"]), None)
-    broken_seeds = [seed.seed for seed in item.seeds if seed.status == "fail"]
-
-    if item.result == "broken":
-        if existing is None:
-            finding = {"id": str(uuid.uuid4()), "repo_id": run["repo_id"], "created_at": stamp, "pledge_id": pledge["id"], "status": "open", "first_run_id": run["id"], "history": [{"at": stamp, "status": "open", "run_id": run["id"]}]}
-        else:
-            finding = existing
-            # Broke again after someone said it was fixed, or after a rerun had verified the fix.
-            if finding["status"] in ("fixed_unverified", "verified"):
-                finding["status"] = "reopened"
-                finding["history"].append({"at": stamp, "status": "reopened", "run_id": run["id"]})
-        finding.update(statement=pledge["statement"], run_id=run["id"], faults_name=faults_name, broken_seeds=broken_seeds, total_seeds=len(item.seeds), updated_at=stamp)
-        store.put("finding", finding)
+    pledge_id = result["pledge_id"]
+    finding = next((finding for finding in store.list("finding", run["repo_id"]) if finding["pledge_id"] == pledge_id), None)
+    if finding is None:
+        if result["result"] != "broken":
+            return None
+        finding = {"id": str(uuid.uuid4()), "repo_id": run["repo_id"], "created_at": stamp, "pledge_id": pledge_id, "status": None, "first_run_id": run["id"], "faults_name": run["faults_name"], "history": []}
+    before = finding["status"]
+    current = _current({**finding, "status": before or "open"}, plans)
+    if before is None and (current is None or current["status"] == "verified"):
+        # This run broke it, but a run started after it under the same plan has already kept it: the standing
+        # is kept, so there is no finding to open (and no id to hand out for one that was never stored).
+        return None
+    if current is None:
         return finding
-
-    # Verified only by evidence: a later run, under the fault plan that broke it, keeps the pledge on every seed.
-    if existing and existing["status"] != "verified" and item.result == "kept" and existing.get("faults_name") == faults_name:
-        existing["status"] = "verified"
-        existing["verified_run_id"] = run["id"]
-        existing["updated_at"] = stamp
-        existing["history"].append({"at": stamp, "status": "verified", "run_id": run["id"]})
-        store.put("finding", existing)
-    return existing
+    # Broke again after someone said it was fixed: their word is withdrawn, as a verified fix's is in _current.
+    if result["result"] == "broken" and current["status"] == "fixed_unverified":
+        current["status"] = "reopened"
+    if current["status"] != before:
+        current["history"] = [*finding["history"], {"at": stamp, "status": current["status"], "run_id": run["id"]}]
+    if current != finding:
+        current.update(statement=_need(store, "pledge", pledge_id)["statement"], updated_at=stamp)
+        store.put("finding", current)
+    return current
 
 
 def patch_finding(store: Store, finding_id: str, patch: FindingPatch) -> dict:
-    finding = _need(store, "finding", finding_id)
+    stored = _need(store, "finding", finding_id)
+    finding = _current(stored, _plans(_runs(store, stored["repo_id"])))
+    if finding is None:
+        raise Refused("no run shows this pledge broken any more: the check never read its value, so there is nothing to fix")
     if finding["status"] == "verified":
         raise Refused("a verified finding changes only when a later run breaks the pledge again")
     if finding["status"] != patch.status:
         finding["status"] = patch.status
         finding["updated_at"] = now()
-        finding["history"].append({"at": finding["updated_at"], "status": patch.status, "run_id": None})
+        finding["history"] = [*finding["history"], {"at": finding["updated_at"], "status": patch.status, "run_id": None}]
         store.put("finding", finding)
     return finding_view(store, finding)
 
@@ -184,6 +199,73 @@ def patch_pledge(store: Store, pledge_id: str, patch: PledgePatch) -> dict:
 
 
 # ---------------------------------------------------------------- reads
+
+
+def _mark(seed: dict, unfired: set[int]) -> str:
+    """What one seed says about one pledge. A pass with no fault injected and a failure with no value read
+    both say nothing."""
+    if seed["status"] == "pass" and seed["seed"] in unfired:
+        return "unknown"
+    # ponytail: for runs published before the command line classified these itself (pledge.verdict.unread).
+    # Only one failing sample was sent then, so only a single failed journey is known to have read nothing.
+    if seed["status"] == "fail" and seed.get("failed") == 1 and seed.get("expected") is not None and seed.get("actual") is None:
+        return "unknown"
+    return seed["status"]
+
+
+def _unfired(run: dict) -> set[int]:
+    """Seeds of a run under a fault plan on which the plan injected nothing: its targets were never called.
+    ponytail: counts faults per seed, not per pledge. A plan that fired only on routes a pledge does not
+    depend on still counts as evidence for it; telling those apart needs the route coverage map."""
+    if not run.get("faults_name"):
+        return set()
+    return {seed["seed"] for seed in (run.get("record") or {}).get("runs", []) if seed["faults_injected"] == 0}
+
+
+def _effective(result: dict, unfired: set[int]) -> dict:
+    marks = [_mark(seed, unfired) for seed in result["seeds"]]
+    if marks == [seed["status"] for seed in result["seeds"]]:
+        return result
+    verdict = "broken" if "fail" in marks else "kept" if all(mark == "pass" for mark in marks) else "inconclusive"
+    return {
+        **result, "result": verdict, "kept": marks.count("pass"), "broken": marks.count("fail"), "unknown": marks.count("unknown"),
+        "seeds": [{**seed, "status": mark} for seed, mark in zip(result["seeds"], marks)],
+    }
+
+
+def _authored(run: dict, runs: list[dict]) -> bool:
+    """True when this run is the one its author's report belongs to: a first scan, and the oldest run of the
+    repo carrying that report. The report sits in the app directory, so later scans published from it carried
+    it too, and so did the baseline of every other scenario of the same first scan."""
+    report = run["record"].get("authoring")
+    if not report or run["trigger"] != "first_scan":
+        return False
+    return not any(other["created_at"] < run["created_at"] and other["trigger"] == "first_scan" and (other.get("record") or {}).get("authoring") == report for other in runs)
+
+
+def _read(store: Store, run: dict, runs: list[dict] | None = None) -> dict:
+    """A stored run as every view sees it. Idempotent, and never written back. `runs` is the repo's stored
+    runs when the caller already has them."""
+    if run["phase"] not in ("done", "failed"):
+        # ponytail: decided when read, from the last event (the store returns the first 500 of a run; a live
+        # run that has sent more and then goes quiet for two hours is the ceiling). No job sweeps these.
+        events = store.events_after(run["id"], 0)
+        heard = events[-1]["at"] if events else run["created_at"]
+        if datetime.now(UTC) - datetime.fromisoformat(heard) > ABANDONED_AFTER:
+            return {**run, "phase": "failed", "failure": "abandoned"}
+        return run
+    record = run.get("record")
+    if not record:
+        return run
+    if record.get("authoring") and not _authored(run, store.list("run", run["repo_id"]) if runs is None else runs):
+        record = {**record, "authoring": None}
+    unfired = _unfired(run)
+    return {**run, "record": record, "results": [_effective(result, unfired) for result in run["results"]]}
+
+
+def _runs(store: Store, repo_id: str) -> list[dict]:
+    runs = store.list("run", repo_id)
+    return [_read(store, run, runs) for run in runs]
 
 
 def _summary(run: dict) -> dict | None:
@@ -233,13 +315,15 @@ def run_row(run: dict, pledges: dict[str, dict]) -> dict:
         "scenario": run["scenario"], "faults": run["faults_name"], "verdict": _verdict(run, pledges), "summary": _summary(run),
         "durationSeconds": _duration(run), "costUsd": None, "seedsPlanned": run.get("seeds_planned"), "failure": run.get("failure"),
         "seedVerdicts": [seed["verdict"] for seed in (run.get("record") or {}).get("runs", [])],
-        "authored": bool((run.get("record") or {}).get("authoring")),
+        "authored": bool((run.get("record") or {}).get("authoring")), "unfiredSeeds": sorted(_unfired(run)),
     }
 
 
 def run_view(store: Store, run: dict) -> dict:
+    run = _read(store, run)
     pledges = _pledges(store, run["repo_id"])
     record = run.get("record") or {}
+    unfired = _unfired(run)
     results = [
         {**result, "pledgeId": result["pledge_id"], "statement": pledges[result["pledge_id"]]["statement"], "status": pledges[result["pledge_id"]]["status"]}
         for result in run["results"] if result["pledge_id"] in pledges
@@ -248,27 +332,67 @@ def run_view(store: Store, run: dict) -> dict:
     return {
         **run_row(run, pledges),
         "results": sorted(results, key=lambda result: result["result"] != "broken"),
-        "faultPlan": record.get("faults"), "seedRuns": record.get("runs", []), "sandbox": record.get("sandbox"),
+        "faultPlan": record.get("faults"), "sandbox": record.get("sandbox"),
+        "seedRuns": [{**seed, "limitations": [UNFIRED_NOTE, *seed["limitations"]]} if seed["seed"] in unfired else seed for seed in record.get("runs", [])],
         "authoring": record.get("authoring"), "env": record.get("env", {}), "findingIds": findings,
     }
 
 
-def _standing(store: Store, repo_id: str) -> dict[str, dict]:
-    """Each pledge's latest result. A run under faults says more than a baseline, so it wins over a newer baseline."""
-    best: dict[str, dict] = {}
-    for run in store.list("run", repo_id):  # newest first
+def _plans(runs: list[dict]) -> dict[str, dict[str | None, dict]]:
+    """Each pledge's latest conclusive result under each fault plan (None is the baseline). `runs` is newest
+    first. A run that came back inconclusive settles nothing, so it stands only where no kept or broken run
+    under the same plan exists.
+    ponytail: a plan that is renamed or deleted keeps its last result for good; drop plans the repo no longer
+    has once runs carry the list of fault files."""
+    plans: dict[str, dict[str | None, dict]] = {}
+    for run in runs:
         if run["phase"] != "done":
             continue
         for result in run["results"]:
-            current = best.get(result["pledge_id"])
-            if current is None or (current["faults"] is None and run["faults_name"] is not None):
-                best[result["pledge_id"]] = {**result, "run_id": run["id"], "faults": run["faults_name"], "at": run["created_at"]}
-    return best
+            mine = plans.setdefault(result["pledge_id"], {})
+            current = mine.get(run["faults_name"])
+            if current is None or (current["result"] == "inconclusive" and result["result"] != "inconclusive"):
+                mine[run["faults_name"]] = {**result, "run_id": run["id"], "faults": run["faults_name"], "at": run["created_at"]}
+    return plans
 
 
-def _history(store: Store, pledge_id: str, repo_id: str) -> list[dict]:
+def _standing(plans: dict[str, dict[str | None, dict]]) -> dict[str, dict]:
+    """Each pledge's standing: the worst of its plans, so broken under any plan is broken. Among equals the
+    newest run speaks, and a kept run under faults says more than a kept baseline."""
+    return {
+        pledge_id: min(sorted(mine.values(), key=lambda entry: entry["at"], reverse=True), key=lambda entry: (RANK[entry["result"]], entry["faults"] is None))
+        for pledge_id, mine in plans.items()
+    }
+
+
+def _current(finding: dict, plans: dict[str, dict]) -> dict | None:
+    """A finding as the runs have it now, or None when no run shows its pledge broken or fixed: the failure
+    it was opened for has since been read as unknown, so there is nothing to report."""
+    mine = plans.get(finding["pledge_id"], {})
+    broken = [entry for entry in mine.values() if entry["result"] == "broken"]
+    if broken:
+        last = max(broken, key=lambda entry: entry["at"])
+        return {
+            **finding, "status": "reopened" if finding["status"] == "verified" else finding["status"], "run_id": last["run_id"], "faults_name": last["faults"],
+            "broken_seeds": [seed["seed"] for seed in last["seeds"] if seed["status"] == "fail"], "total_seeds": len(last["seeds"]),
+        }
+    # Verified only by evidence: the plan that broke it now keeps it. A kept run under another plan says nothing.
+    proof = mine.get(finding.get("faults_name"))
+    if proof and proof["result"] == "kept":
+        return {**finding, "status": "verified", "verified_run_id": proof["run_id"]}
+    return None
+
+
+def _findings(store: Store, repo_id: str, plans: dict[str, dict], pledges: dict[str, dict]) -> list[dict]:
+    """The findings there are to act on or to have fixed. A retired pledge is no longer a rule and no run
+    checks it again, so its finding could never close; it is left out with the pledge."""
+    found = (_current(finding, plans) for finding in store.list("finding", repo_id) if pledges.get(finding["pledge_id"], {}).get("status") != "retired")
+    return [finding for finding in found if finding]
+
+
+def _history(runs: list[dict], pledge_id: str) -> list[dict]:
     points = []
-    for run in store.list("run", repo_id):
+    for run in runs:
         for result in run["results"]:
             if result["pledge_id"] == pledge_id:
                 points.append({"runId": run["id"], "at": run["created_at"], "faults": run["faults_name"], "result": result["result"]})
@@ -288,19 +412,21 @@ def pledge_row(pledge: dict, standing: dict[str, dict]) -> dict:
 
 def pledge_list(store: Store, repo_id: str, status: str | None = None) -> list[dict]:
     _need(store, "repo", repo_id)
-    standing = _standing(store, repo_id)
+    standing = _standing(_plans(_runs(store, repo_id)))
     order = {"broken": 0, "inconclusive": 1, "kept": 2, None: 3}
     rows = [pledge_row(pledge, standing) for pledge in store.list("pledge", repo_id) if status is None or pledge["status"] == status]
     return sorted(rows, key=lambda row: (order[row["lastVerdict"]], row["scenario"], row["key"]))
 
 
 def pledge_view(store: Store, pledge: dict) -> dict:
-    standing = _standing(store, pledge["repo_id"])
+    runs = _runs(store, pledge["repo_id"])
+    plans = _plans(runs)
+    standing = _standing(plans)
     last = standing.get(pledge["id"])
-    finding = next((f for f in store.list("finding", pledge["repo_id"]) if f["pledge_id"] == pledge["id"]), None)
+    finding = next((f for f in _findings(store, pledge["repo_id"], plans, {}) if f["pledge_id"] == pledge["id"]), None)
     return {
         **pledge_row(pledge, standing), "assertion": pledge["assertion"], "file": f".pledge/pledges/{pledge['key']}.json",
-        "seeds": last["seeds"] if last else [], "history": _history(store, pledge["id"], pledge["repo_id"]),
+        "seeds": last["seeds"] if last else [], "history": _history(runs, pledge["id"]),
         "findingId": finding["id"] if finding else None, "plantedBugs": [],
     }
 
@@ -324,9 +450,13 @@ def severity(key: str, statement: str) -> str:
 
 def _first_broken(store: Store, finding: dict) -> dict:
     """The first failing seed of the run that last broke this finding's pledge: where its numbers come from."""
-    run = store.get("run", finding["run_id"]) or {"results": []}
-    result = next((item for item in run["results"] if item["pledge_id"] == finding["pledge_id"]), {"seeds": []})
+    result = next((item for item in _run(store, finding["run_id"])["results"] if item["pledge_id"] == finding["pledge_id"]), {"seeds": []})
     return next((seed for seed in result["seeds"] if seed["status"] == "fail"), {})
+
+
+def _run(store: Store, run_id: str) -> dict:
+    run = store.get("run", run_id)
+    return _read(store, run) if run else {"results": [], "record": None, "scenario": None, "phase": "done"}
 
 
 def finding_row(store: Store, finding: dict, pledges: dict[str, dict]) -> dict:
@@ -345,13 +475,15 @@ def finding_row(store: Store, finding: dict, pledges: dict[str, dict]) -> dict:
 def finding_list(store: Store, repo_id: str, status: str | None = None) -> list[dict]:
     _need(store, "repo", repo_id)
     pledges = _pledges(store, repo_id)
-    rows = [finding_row(store, finding, pledges) for finding in store.list("finding", repo_id) if status is None or finding["status"] == status]
+    rows = [finding_row(store, finding, pledges) for finding in _findings(store, repo_id, _plans(_runs(store, repo_id)), pledges) if status is None or finding["status"] == status]
     return sorted(rows, key=lambda row: (row["status"] == "verified", SEVERITY_ORDER[row["severity"]]))  # stable: newest first within a level
 
 
 def finding_view(store: Store, finding: dict) -> dict:
     pledges = _pledges(store, finding["repo_id"])
-    run = store.get("run", finding["run_id"]) or {"results": [], "record": None, "scenario": None, "phase": "done"}
+    # A finding no run supports any more is still shown as it was stored, to whoever holds its link.
+    finding = _current(finding, _plans(_runs(store, finding["repo_id"]))) or finding
+    run = _run(store, finding["run_id"])
     result = next((item for item in run["results"] if item["pledge_id"] == finding["pledge_id"]), {"seeds": []})
     recording = result.get("recording")
     record = run.get("record") or {}
@@ -374,11 +506,11 @@ def repo_list(store: Store) -> list[dict]:
     rows = []
     for repo in store.list("repo"):
         pledges = _pledges(store, repo["id"])
-        runs = store.list("run", repo["id"])
+        runs = _runs(store, repo["id"])
         latest = next((run for run in runs if run["phase"] == "done"), None)
         rows.append({
             "id": repo["id"], "name": repo["name"], "createdAt": repo["created_at"], "pledges": len(pledges),
-            "openFindings": sum(1 for finding in store.list("finding", repo["id"]) if finding["status"] != "verified"),
+            "openFindings": sum(1 for finding in _findings(store, repo["id"], _plans(runs), pledges) if finding["status"] != "verified"),
             "latestRun": run_row(latest, pledges) if latest else None, "lastActivity": runs[0]["created_at"] if runs else repo["created_at"],
         })
     return sorted(rows, key=lambda row: row["lastActivity"], reverse=True)
@@ -387,9 +519,10 @@ def repo_list(store: Store) -> list[dict]:
 def overview(store: Store, repo_id: str) -> dict:
     repo = _need(store, "repo", repo_id)
     pledges = _pledges(store, repo_id)
-    runs = store.list("run", repo_id)
-    findings = store.list("finding", repo_id)
-    standing = _standing(store, repo_id)
+    runs = _runs(store, repo_id)
+    plans = _plans(runs)
+    findings = _findings(store, repo_id, plans, pledges)
+    standing = _standing(plans)
     active = {pid: pledge for pid, pledge in pledges.items() if pledge["status"] != "retired" and pid in standing}
     broken = [pledge_row(pledge, standing) for pid, pledge in active.items() if standing[pid]["result"] == "broken"]
     done = [run for run in runs if run["phase"] == "done"]
