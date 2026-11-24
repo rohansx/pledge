@@ -28,6 +28,26 @@ class SeedIn(Strict):
     failed: int | None = Field(default=None, ge=0)
 
 
+class StepDetailIn(Strict):
+    request: str = Field(max_length=400)
+    reply: str = Field(max_length=400)
+
+
+class StepIn(Strict):
+    at: int = Field(ge=0)
+    actor: Literal["client", "fault", "check"]
+    text: str = Field(max_length=1200)
+    detail: StepDetailIn | None = None
+
+class RecordingIn(Strict):
+    """One journey that broke the pledge, request by request, as the proxy saw it."""
+
+    seed: int
+    journey: str = Field(max_length=200)
+    faults_hit: int = Field(ge=0)
+    steps: list[StepIn] = Field(max_length=81)
+
+
 class PledgeIn(Strict):
     id: str = Field(min_length=1, max_length=120, pattern=r"^[A-Za-z0-9][A-Za-z0-9_.-]*$")
     statement: str = Field(max_length=1000)
@@ -40,6 +60,7 @@ class PledgeIn(Strict):
     broken: int = Field(ge=0)
     unknown: int = Field(ge=0)
     seeds: list[SeedIn] = Field(max_length=256)
+    recording: RecordingIn | None = None
 
 
 class SeedRunIn(Strict):

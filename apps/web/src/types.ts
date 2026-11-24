@@ -125,13 +125,21 @@ export interface Finding {
   updatedAt: string;
 }
 
+export interface RecordingStep {
+  at: number;
+  actor: "client" | "fault" | "check";
+  text: string;
+  detail: { request: string; reply: string } | null;
+}
+
 export interface FindingDetail extends Finding {
   seeds: Seed[];
   expected: unknown;
   actual: unknown;
   summary: RunSummary | null;
   faultPlan: FaultPlan | null;
-  timeline: { at: number; actor: string; text: string }[];
+  timeline: RecordingStep[];
+  recording: { seed: number; journey: string; faults_hit: number } | null;
   minimalFaultPlan: { fault: string; target: string }[];
   replayCommand: string;
   history: { at: string; status: FindingStatus; run_id: string | null }[];

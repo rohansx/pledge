@@ -122,3 +122,19 @@ def test_an_unreachable_upstream_is_a_502_not_a_crash():
                 await runner.cleanup()
 
     asyncio.run(main())
+
+
+def test_traffic_log_records_every_request_with_its_journey_and_masks_secrets():
+    async def scenario(http, proxy, admin, calls):
+        async with http.put(f"{admin}/plan", json=retry_plan()) as response:
+            assert response.status == 200
+        body = '{"order_ref":"a","password":"hunter2"}'
+        for _ in range(2):
+            async with http.post(f"{proxy}/payments", data=body, headers={"X-Pledge-Journey": "j-1"}) as response:
+                await response.read()
+        async with http.get(f"{admin}/log") as response:
+            traffic = (await response.json())["data"]["traffic"]
+        assert [(t["journey"], t["upstream_status"], t["returned_status"], t["fault"]) for t in traffic] == [("j-1", 201, 504, 0), ("j-1", 201, 201, None)]
+        assert "hunter2" not in traffic[0]["request"] and '"password":"***"' in traffic[0]["request"]
+
+    with_proxy(scenario)

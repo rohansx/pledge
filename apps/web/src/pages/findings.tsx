@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate, useParams, useSearch } from "@tanstack/react-router";
 
 import { Button, CopyCommand, Empty, ErrorNote, ExpectedActual, FindingStatusBadge, Loading, PageTitle, PledgeStatusBadge, RunStrip, Section, Seeds } from "../components/ui.tsx";
+import { Recording } from "../components/recording.tsx";
 import { when } from "../format.ts";
 import { findingQuery, findingsQuery, useSetFindingStatus } from "../queries.ts";
 import type { FindingDetail } from "../types.ts";
@@ -110,13 +111,13 @@ export function FindingPage() {
 
       <Section title="Expected versus actual" note="read from the app's data after each run"><div className="mt-2"><ExpectedActual seeds={finding.seeds} /></div></Section>
 
-      <Section title="How it happened">
-        {finding.timeline.length === 0 ? (
-          <p className="mt-4 max-w-[70ch] text-sm text-ink-2">
-            An ordered timeline is not recorded yet. What is known: {finding.faultPlan ? finding.faultPlan.description : "the scenario ran with no faults injected."}
-          </p>
+      <Section title="How it happened" note={finding.recording ? `a recording of one journey that broke it, ${finding.recording.faults_hit} lost ${finding.recording.faults_hit === 1 ? "reply" : "replies"}` : undefined}>
+        {finding.recording && finding.timeline.length > 0 ? (
+          <Recording steps={finding.timeline} journey={finding.recording.journey} seed={finding.recording.seed} />
         ) : (
-          <ol className="mt-4 space-y-2">{finding.timeline.map((step, index) => <li key={index} className="grid grid-cols-[110px_1fr] gap-3 text-sm"><span className="font-mono text-xs text-mute">{step.actor}</span><span>{step.text}</span></li>)}</ol>
+          <p className="mt-4 max-w-[70ch] text-sm text-ink-2">
+            No recording for this run: it was made before the proxy recorded each request, or its scenario does not tag requests with their journey. What is known: {finding.faultPlan ? finding.faultPlan.description : "the scenario ran with no faults injected."}
+          </p>
         )}
       </Section>
 

@@ -49,7 +49,7 @@ def author(app_dir: Path, out_dir: Path, live=None) -> dict:
         raise ValueError(f"{out_dir} is not empty")
     load_key()
     agent.load_key()
-    client = anthropic.Anthropic()
+    client = anthropic.Anthropic(max_retries=8)  # rides out a DNS blip or a 429 with backoff before a phase fails
 
     def log(message: str) -> None:
         print(f"[{time.strftime('%H:%M:%S')}] {message}", file=sys.stderr, flush=True)

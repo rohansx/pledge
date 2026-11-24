@@ -14,6 +14,8 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
+from pledge.recording import recording
+
 DEFAULT_API = "https://app.pledge.sh"
 TOKEN_FILE = Path.home() / ".config/workz/pledge.env"
 MAX_VALUE_CHARS = 2000  # of one expected or actual value, as JSON
@@ -89,6 +91,10 @@ def build_record(app_dir: Path, report: dict, run_dirs: list[Path], faults_file:
         }
         for row in report["pledges"] if "kept" in row
     ]
+    for pledge in pledges:
+        if pledge["broken"]:
+            found = (recording(run_dir, pledge["assertion"], pledge["statement"]) for run_dir in run_dirs)
+            pledge["recording"] = next((item for item in found if item), None)
     faults = None
     if faults_file is not None:
         document = json.loads(faults_file.read_text())

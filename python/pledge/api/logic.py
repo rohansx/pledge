@@ -102,7 +102,7 @@ def finish_run(store: Store, run_id: str, result: RunResultIn) -> dict:
         }
         pledge.update(statement=item.statement, source=SOURCES.get(item.source, "inferred"), confidence=item.confidence, assertion=item.assertion, updated_at=stamp)
         store.put("pledge", pledge)
-        results.append({"pledge_id": pledge_id, "result": item.result, "kept": item.kept, "broken": item.broken, "unknown": item.unknown, "seeds": [seed.model_dump(exclude_none=True) for seed in item.seeds]})
+        results.append({"pledge_id": pledge_id, "result": item.result, "kept": item.kept, "broken": item.broken, "unknown": item.unknown, "seeds": [seed.model_dump(exclude_none=True) for seed in item.seeds], "recording": item.recording.model_dump() if item.recording else None})
         finding = _update_finding(store, run, pledge, item, faults_name, stamp)
         if finding and item.result == "broken":
             finding_ids.append(finding["id"])
@@ -318,15 +318,17 @@ def finding_view(store: Store, finding: dict) -> dict:
     run = store.get("run", finding["run_id"]) or {"results": [], "record": None, "scenario": None, "phase": "done"}
     result = next((item for item in run["results"] if item["pledge_id"] == finding["pledge_id"]), {"seeds": []})
     first_broken = next((seed for seed in result["seeds"] if seed["status"] == "fail"), {})
+    recording = result.get("recording")
     record = run.get("record") or {}
     return {
         **finding_row(finding, pledges),
         "seeds": result["seeds"], "expected": first_broken.get("expected"), "actual": first_broken.get("actual"),
         "summary": _summary(run) if run.get("record") else None, "faultPlan": record.get("faults"),
-        # Neither exists yet: the proxy records which faults it injected, not an ordered story per journey,
-        # and nothing shrinks a fault plan. Empty rather than invented.
-        "timeline": [], "minimalFaultPlan": [],
-        "replayCommand": _replay(run.get("scenario") or "", finding.get("faults_name"), (finding["broken_seeds"] or [1])[0]),
+        # The recording is one broken journey as the proxy saw it; runs from before the proxy logged traffic have none.
+        # Nothing shrinks a fault plan yet, so that stays empty rather than invented.
+        "timeline": recording["steps"] if recording else [], "recording": recording and {key: recording[key] for key in ("seed", "journey", "faults_hit")},
+        "minimalFaultPlan": [],
+        "replayCommand": _replay(run.get("scenario") or "", finding.get("faults_name"), recording["seed"] if recording else (finding["broken_seeds"] or [1])[0]),
         "history": finding["history"], "blocks": pledges.get(finding["pledge_id"], {}).get("status") == "approved",
     }
 

@@ -118,6 +118,8 @@ to a request tries again. Journeys that never retry cannot reveal what a retry b
 - Prefer checks on final state over checks on responses: what the application's own read endpoints report \
 after the run, and above all what each fake recorded. A fake's `/_fake/summary` is read with an \
 observation whose `origin` is the fake's own address, listed in `allowed_origins`.
+- Send the header `X-Pledge-Journey: lt.journeyKey()` on every request a journey makes. The proxy \
+records each request under it, so a journey that breaks a pledge can be replayed step by step.
 - Keep scenarios small: around 20 journeys over a few seconds is enough.
 
 **Pledges**, `.pledge/pledges/<id>.json`. A pledge is one statement about the data that must always hold, \

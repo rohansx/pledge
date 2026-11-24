@@ -82,8 +82,34 @@ def test_finding_detail_carries_expected_actual_and_a_replay_command(client):
     assert detail["brokenSeeds"] == [2]
     assert detail["replayCommand"] == "pledge run . --scenario checkout --faults .pledge/faults/lost-reply.json --seed 2"
     assert detail["summary"]["requestsSent"] == 120
-    assert detail["timeline"] == [] and detail["minimalFaultPlan"] == []  # not recorded yet; never invented
+    assert detail["timeline"] == [] and detail["recording"] is None  # no recording sent; never invented
+    assert detail["minimalFaultPlan"] == []
     assert detail["blocks"] is False
+
+
+def test_a_recording_becomes_the_finding_timeline_and_its_seed_the_replay(client):
+    broken = pledge("one-charge", "broken", seeds=("fail", "fail"))
+    steps = [
+        {"at": 0, "actor": "fault", "text": "POST /payments: reply lost", "detail": {"request": '{"amount":5}', "reply": '{"id":1}'}},
+        {"at": 210, "actor": "client", "text": "POST /payments → 201", "detail": {"request": '{"amount":5}', "reply": '{"id":2}'}},
+        {"at": 210, "actor": "check", "text": "Broken: one-charge holds.", "detail": None},
+    ]
+    broken["recording"] = {"seed": 2, "journey": "run-traffic-3", "faults_hit": 1, "steps": steps}
+    scan(client, [broken], seeds=2)
+    finding_id = client.get("/api/repos/shop/findings").json()["data"][0]["id"]
+
+    detail = client.get(f"/api/findings/{finding_id}").json()["data"]
+
+    assert detail["timeline"] == steps
+    assert detail["recording"] == {"seed": 2, "journey": "run-traffic-3", "faults_hit": 1}
+    assert detail["replayCommand"].endswith("--seed 2")
+
+
+def test_a_recording_step_with_an_unknown_actor_is_refused(client):
+    broken = pledge("one-charge", "broken")
+    broken["recording"] = {"seed": 1, "journey": "j", "faults_hit": 0, "steps": [{"at": 0, "actor": "root", "text": "x", "detail": None}]}
+    run = client.post("/api/repos/shop/runs", json={"trigger": "manual"}).json()["data"]
+    assert client.post(f"/api/runs/{run['id']}/result", json=result([broken])).status_code == 422
 
 
 def test_only_an_approved_pledge_makes_a_run_broken(client):

@@ -143,8 +143,10 @@ def run(app_dir: Path, scenario: str, faults_file: Path | None, seed: int, runs_
         raise RuntimeError(f"engine refused the run: {result.get('error', result)}")
 
     run_dir = runs_dir.resolve() / result["run_id"]
-    injected = _http("GET", f"{ADMIN_URL}/log")["data"]["injected"]
+    log = _http("GET", f"{ADMIN_URL}/log")["data"]
+    injected = log["injected"]
     # Written after the engine sealed the run, so it is not in artifacts.json; kept apart under pledge/.
     (run_dir / "pledge").mkdir(exist_ok=True)
     (run_dir / "pledge" / "proxy_injected.json").write_text(json.dumps(injected, indent=2))
+    (run_dir / "pledge" / "proxy_traffic.json").write_text(json.dumps(log.get("traffic", [])))
     return {"run_id": result["run_id"], "run_dir": str(run_dir), "seed": seed, "verdict": result["verdict"], "faults_injected": len(injected)}
