@@ -6,6 +6,7 @@ import socket
 import pytest
 
 from pledge import local
+from pledge.check import check_author
 
 
 def free_port() -> int:
@@ -66,3 +67,30 @@ def test_restart_refuses_a_service_the_recipe_does_not_name_and_a_command_that_f
         local.restart_service(app_dir, "db")
     with pytest.raises(local.BootError, match="restart command exited 1: no such container"):
         local.restart_service(app_dir, "ledger")
+
+
+def app_with_faults(tmp_path, *faults):
+    """An app directory that is not booted: a recipe with one service, `app`, and one faults file."""
+    recipe = {"schema_version": 1, "target": "http://127.0.0.1:1", "routes": {}, "services": [{"name": "app", "command": ["true"], "health": "http://127.0.0.1:1/"}]}
+    (tmp_path / local.BOOT_FILE).write_text(json.dumps(recipe))
+    (tmp_path / ".pledge" / "faults").mkdir(parents=True)
+    (tmp_path / ".pledge" / "faults" / "crash.json").write_text(json.dumps({"faults": list(faults)}))
+    return tmp_path / ".pledge" / "faults" / "crash.json"
+
+
+def test_a_run_whose_plan_restarts_an_unknown_service_or_cannot_be_applied_stops_before_anything_is_sent(tmp_path):
+    faults = app_with_faults(tmp_path, {"kind": "restart", "target": "app POST /x", "params": {"service": "db"}})
+    with pytest.raises(RuntimeError, match=r"restarts \['db'\], which pledge.boot.json does not list"):
+        local.run(tmp_path, "checkout", faults, 1, tmp_path / "runs")
+
+    faults.write_text(json.dumps({"faults": [{"kind": "reorder", "target": "app POST /x"}]}))
+    with pytest.raises(RuntimeError, match="fault plan: .*cannot apply kind 'reorder'"):
+        local.run(tmp_path, "checkout", faults, 1, tmp_path / "runs")
+
+
+def test_the_authors_check_names_a_restart_of_a_service_the_recipe_does_not_have(tmp_path):
+    app_with_faults(tmp_path, {"kind": "restart", "target": "app POST /x", "params": {"service": "app"}}, {"kind": "restart", "target": "app POST /x", "params": {"service": "db"}})
+
+    problems = check_author(tmp_path, tmp_path / "runs")["problems"]
+
+    assert [p for p in problems if "faults file" in p] == ["faults file crash.json: faults[1] restarts 'db', which pledge.boot.json does not list as a service"]

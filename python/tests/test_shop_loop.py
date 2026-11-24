@@ -96,3 +96,17 @@ def test_a_shop_killed_after_the_charge_is_restarted_and_charges_again_when_the_
     assert [(entry["kind"], entry["service"], entry["error"]) for entry in restarts] == [("restart", "app", None)]
     rows = {row["id"]: row for row in report["pledges"]}
     assert rows["one-charge-per-order"]["broken"] == 1  # the provider was charged; the shop died before writing it down
+
+
+def test_a_run_whose_restarted_service_did_not_come_back_fails_instead_of_giving_a_verdict(tmp_path):
+    shop = tmp_path / "shop"
+    shutil.copytree(SHOP, shop, ignore=shutil.ignore_patterns(local.STATE_DIR))
+    recipe = json.loads((shop / local.BOOT_FILE).read_text())
+    recipe["services"][1]["restart"] = ["sh", "-c", "echo cannot start >&2; exit 1"]  # the app's own restart command, failing
+    (shop / local.BOOT_FILE).write_text(json.dumps(recipe))
+    local.boot(shop, {"SHOP_DB": str(tmp_path / "shop.db")})
+    try:
+        with pytest.raises(RuntimeError, match="app did not come back after the restart fault: .*cannot start"):
+            local.run(shop, "checkout", shop / ".pledge" / "faults" / CRASH.name, 1, tmp_path / "runs")
+    finally:
+        local.down(shop)
