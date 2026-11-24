@@ -21,6 +21,7 @@ from pledge.proxy import DEFAULT_ADMIN_PORT
 BOOT_FILE = "pledge.boot.json"
 STATE_DIR = ".pledge-run"
 HEALTH_TIMEOUT_SECONDS = 90
+LOG_TAIL_LINES = 300
 ADMIN_URL = f"http://127.0.0.1:{DEFAULT_ADMIN_PORT}"
 
 
@@ -149,4 +150,9 @@ def run(app_dir: Path, scenario: str, faults_file: Path | None, seed: int, runs_
     (run_dir / "pledge").mkdir(exist_ok=True)
     (run_dir / "pledge" / "proxy_injected.json").write_text(json.dumps(injected, indent=2))
     (run_dir / "pledge" / "proxy_traffic.json").write_text(json.dumps(log.get("traffic", [])))
+    # The end of each service's log, so a seed where the app misbehaved can be diagnosed after its sandbox is gone.
+    (run_dir / "pledge" / "logs").mkdir(exist_ok=True)
+    for service_log in (app_dir / STATE_DIR).glob("*.log"):
+        lines = service_log.read_text(errors="replace").splitlines()[-LOG_TAIL_LINES:]
+        (run_dir / "pledge" / "logs" / service_log.name).write_text("\n".join(lines) + "\n")
     return {"run_id": result["run_id"], "run_dir": str(run_dir), "seed": seed, "verdict": result["verdict"], "faults_injected": len(injected)}

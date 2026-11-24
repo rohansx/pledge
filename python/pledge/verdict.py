@@ -8,6 +8,7 @@ import sys
 from pathlib import Path
 
 PLEDGE_STATUSES = ("proposed", "proven", "approved", "retired")
+DOWN_MIN_REQUESTS = 5
 
 
 class PledgeError(ValueError):
@@ -69,15 +70,41 @@ def judge(pledges: list[dict], counts: dict, scenario: str) -> dict:
     return {"schema_version": 1, "scenario": scenario, "runs": counts["runs"], "verdict": overall, "pledges": rows}
 
 
+def app_down(run_dir: Path) -> bool:
+    """True when not one request the proxy left alone got a successful answer from the app: the app was dead (or
+    never let a user in), so a failed check in this run says nothing about the pledge. Seen after a snapshot fork,
+    with login itself answering 500."""
+    path = run_dir / "pledge" / "proxy_traffic.json"
+    if not path.is_file():
+        return False
+    unfaulted = [entry for entry in json.loads(path.read_text()) if entry.get("route") == "app" and entry.get("fault") is None]
+    return len(unfaulted) >= DOWN_MIN_REQUESTS and not any(200 <= entry["returned_status"] < 400 for entry in unfaulted)
+
+
 def verdict(app_dir: Path, run_dirs: list[Path]) -> dict:
     scenarios = {json.loads((run_dir / "run.json").read_text())["scenario"] for run_dir in run_dirs}
     if len(scenarios) != 1:
         raise PledgeError("runs are from different scenarios")
-    return judge(load_pledges(app_dir), tally(run_dirs), scenarios.pop())
+    scenario, pledges = scenarios.pop(), load_pledges(app_dir)
+    down = [run_dir for run_dir in run_dirs if app_down(run_dir)]
+    healthy = [run_dir for run_dir in run_dirs if run_dir not in down]
+    # A run where the app was down counts as unknown for every pledge, never as kept or broken.
+    counts = tally(healthy) if healthy else {"assertions": {}}
+    for pledge in pledges:
+        if pledge["check"]["scenario"] == scenario and not healthy:
+            counts["assertions"][pledge["check"]["assertion"]] = {"pass": 0, "fail": 0, "unknown": 0, "failed_runs": []}
+    for entry in counts["assertions"].values():
+        entry["unknown"] += len(down)
+    counts["runs"] = len(run_dirs)
+    report = judge(pledges, counts, scenario)
+    report["app_down_seeds"] = sorted(json.loads((run_dir / "result.json").read_text())["seed"] for run_dir in down)
+    return report
 
 
 def format_verdict(report: dict) -> list[str]:
     lines = [f"{report['verdict'].upper()}  scenario {report['scenario']}  {report['runs']} runs"]
+    if report.get("app_down_seeds"):
+        lines.append(f"  the app was down (no request succeeded) on seeds {report['app_down_seeds']}: counted as unknown")
     for row in report["pledges"]:
         if "kept" not in row:
             lines.append(f"  {row['id']}: inconclusive ({row['reason']})")

@@ -15,9 +15,11 @@ import urllib.request
 from pathlib import Path
 
 from pledge.recording import recording
+from pledge.verdict import app_down
 
 DEFAULT_API = "https://app.pledge.sh"
 TOKEN_FILE = Path.home() / ".config/workz/pledge.env"
+DOWN_NOTE = "The app did not answer one request successfully on this seed (it was down), so its checks are counted as unknown."
 MAX_VALUE_CHARS = 2000  # of one expected or actual value, as JSON
 
 
@@ -69,6 +71,7 @@ def build_record(app_dir: Path, report: dict, run_dirs: list[Path], faults_file:
     """The run's result as the API wants it. `report` is what `pledge.verdict.verdict` returned."""
     pairs = sorted(((run_dir, json.loads((run_dir / "result.json").read_text())) for run_dir in run_dirs), key=lambda pair: pair[1]["seed"])
     run_dirs, results = [pair[0] for pair in pairs], [pair[1] for pair in pairs]
+    down = {result["seed"] for run_dir, result in pairs if app_down(run_dir)}
     runs = []
     for run_dir, result in zip(run_dirs, results):
         injected = run_dir / "pledge" / "proxy_injected.json"
@@ -80,20 +83,20 @@ def build_record(app_dir: Path, report: dict, run_dirs: list[Path], faults_file:
             "faults_injected": len(json.loads(injected.read_text())) if injected.is_file() else 0,
             "journeys": int(metrics.get("iterations") or 0),
             "requests": int(metrics.get("http_reqs") or 0), "unexpected_failures": int(unexpected.get("failed") or 0),
-            "limitations": [str(item)[:500] for item in result.get("limitations", [])][:20],
+            "limitations": ([DOWN_NOTE] if result["seed"] in down else []) + [str(item)[:500] for item in result.get("limitations", [])][:19],
         })
     pledges = [
         {
             "id": row["id"], "statement": row["statement"][:1000], "status": row["status"], "source": row["source"],
             "confidence": row["confidence"], "assertion": row["assertion"], "result": row["result"],
             "kept": row["kept"], "broken": row["broken"], "unknown": row["unknown"],
-            "seeds": [_seed(result, row["assertion"]) for result in results],
+            "seeds": [_seed(result, row["assertion"]) if result["seed"] not in down else {"seed": result["seed"], "run_id": result["run_id"], "status": "unknown"} for result in results],
         }
         for row in report["pledges"] if "kept" in row
     ]
     for pledge in pledges:
         if pledge["broken"]:
-            found = (recording(run_dir, pledge["assertion"], pledge["statement"]) for run_dir in run_dirs)
+            found = (recording(run_dir, pledge["assertion"], pledge["statement"]) for run_dir, result in pairs if result["seed"] not in down)
             pledge["recording"] = next((item for item in found if item), None)
     faults = None
     if faults_file is not None:

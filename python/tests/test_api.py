@@ -255,3 +255,9 @@ def test_what_is_not_built_says_so_instead_of_pretending(client):
 
     assert client.get("/api/repos/shop/coverage").json()["data"]["available"] is False
     assert client.post(f"/api/findings/{finding_id}/rerun").status_code == 501
+
+
+def test_jsonb_text_never_carries_a_nul():
+    from pledge.api.store import _jsonb
+
+    assert _jsonb({"a\x00": ["b\x00", 1, None, {"c": "d\x00e"}]}) == '{"a": ["b", 1, null, {"c": "de"}]}'

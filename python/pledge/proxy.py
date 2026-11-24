@@ -34,8 +34,16 @@ SECRET_FIELD = re.compile(r'("(?:[^"]*(?:password|secret|token|api_?key|authoriz
 
 
 def _preview(body: bytes) -> str:
-    """The start of a body for the recording, with secret-looking JSON fields masked."""
-    text = body[: BODY_PREVIEW * 4].decode("utf-8", "replace")
+    """The start of a body for the recording, with secret-looking JSON fields masked. A body that is not text
+    (compressed, binary) is described, not shown: its bytes mean nothing on a page and can carry NULs."""
+    try:
+        text = body[: BODY_PREVIEW * 4].decode("utf-8")
+    except UnicodeDecodeError as exc:
+        if exc.start < BODY_PREVIEW * 4 - 4:  # not just a character cut in half by the slice
+            return f"({len(body)} bytes, not text)"
+        text = body[: exc.start].decode("utf-8")
+    if "\x00" in text:
+        return f"({len(body)} bytes, not text)"
     return SECRET_FIELD.sub(r'\1"***"', text)[:BODY_PREVIEW]
 
 

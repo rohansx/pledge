@@ -138,3 +138,11 @@ def test_traffic_log_records_every_request_with_its_journey_and_masks_secrets():
         assert "hunter2" not in traffic[0]["request"] and '"password":"***"' in traffic[0]["request"]
 
     with_proxy(scenario)
+
+
+def test_a_body_that_is_not_text_is_described_not_shown():
+    from pledge.proxy import _preview
+
+    assert _preview(b"\x1f\x8b\x08\x00\xff\xfe") == "(6 bytes, not text)"
+    assert _preview(b'{"a":"\x00"}') == "(9 bytes, not text)"
+    assert _preview("é".encode() * 700) == "é" * 300  # a character split by the slice is not binary

@@ -44,3 +44,14 @@ def test_postgres_and_memory_agree_on_documents_and_events(stores):
         after = store.events_after(first["id"], seqs[0])
         assert [(event["type"], event["payload"]["label"]) for event in after] == [("phase_step", "step 1"), ("phase_step", "step 2")]
         assert store.events_after(second["id"], 0) == []
+
+
+def test_text_with_a_nul_character_is_stored_without_it(stores):
+    """Postgres jsonb refuses \\u0000; a reply body from a sandbox once carried one and the API answered 500."""
+    doc = {"id": str(uuid.uuid4()), "repo_id": "r", "created_at": now(), "reply": "a\x00b", "steps": [{"t\x00": "c\x00"}]}
+    for store in stores:
+        store.put("run", doc)
+        store.add_event(doc["id"], "phase_step", {"label": "x\x00y"})
+    pg, _ = stores
+    assert pg.get("run", doc["id"])["reply"] == "ab" and pg.get("run", doc["id"])["steps"] == [{"t": "c"}]
+

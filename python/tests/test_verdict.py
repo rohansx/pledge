@@ -74,3 +74,22 @@ def test_load_pledges_reads_valid_files_and_names_an_invalid_one(tmp_path):
     (folder / "b.json").write_text(json.dumps(pledge("b", "x") | {"status": "maybe"}))
     with pytest.raises(PledgeError, match="b.json"):
         load_pledges(tmp_path)
+
+
+def traffic_run(tmp_path, name, statuses, faulted=()):
+    run_dir = tmp_path / name
+    (run_dir / "pledge").mkdir(parents=True)
+    entries = [{"route": "app", "returned_status": status, "fault": None} for status in statuses]
+    entries += [{"route": "app", "returned_status": 504, "fault": 0} for _ in faulted]
+    (run_dir / "pledge" / "proxy_traffic.json").write_text(json.dumps(entries))
+    return run_dir
+
+
+def test_a_run_is_app_down_only_when_no_unfaulted_request_succeeded(tmp_path):
+    from pledge.verdict import app_down
+
+    assert app_down(traffic_run(tmp_path, "login-500-then-401", [500] * 4 + [401] * 8))
+    assert not app_down(traffic_run(tmp_path, "one-success", [500] * 9 + [201]))
+    assert not app_down(traffic_run(tmp_path, "too-few", [500] * 4))
+    assert not app_down(traffic_run(tmp_path, "only-faults-failed", [200] * 6, faulted=[1] * 6))
+    assert not app_down(tmp_path)  # no traffic log at all: an older run, judged as before

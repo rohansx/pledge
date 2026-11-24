@@ -89,6 +89,21 @@ create index if not exists run_event_run on run_event (run_id, seq);
 """
 
 
+def _without_nul(value: object) -> object:
+    if isinstance(value, str):
+        return value.replace("\x00", "")
+    if isinstance(value, dict):
+        return {_without_nul(key): _without_nul(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_without_nul(item) for item in value]
+    return value
+
+
+def _jsonb(value: object) -> str:
+    """JSON text Postgres jsonb will take. It refuses the NUL character, which text from a sandbox can carry."""
+    return json.dumps(_without_nul(value))
+
+
 class PgStore:
     def __init__(self, database_url: str) -> None:
         from psycopg_pool import ConnectionPool
@@ -109,7 +124,7 @@ class PgStore:
             connection.execute(
                 "insert into doc (kind, id, repo_id, created_at, data) values (%s, %s, %s, %s, %s) "
                 "on conflict (kind, id) do update set data = excluded.data, repo_id = excluded.repo_id",
-                (kind, doc["id"], doc.get("repo_id"), doc["created_at"], json.dumps(doc)),
+                (kind, doc["id"], doc.get("repo_id"), doc["created_at"], _jsonb(doc)),
             )
 
     def list(self, kind: str, repo_id: str | None = None) -> list[dict]:
@@ -122,7 +137,7 @@ class PgStore:
 
     def add_event(self, run_id: str, event_type: str, payload: dict) -> int:
         with self._pool.connection() as connection:
-            row = connection.execute("insert into run_event (run_id, type, payload) values (%s, %s, %s) returning seq", (run_id, event_type, json.dumps(payload))).fetchone()
+            row = connection.execute("insert into run_event (run_id, type, payload) values (%s, %s, %s) returning seq", (run_id, event_type, _jsonb(payload))).fetchone()
         return row[0]
 
     def events_after(self, run_id: str, after: int) -> list[dict]:
