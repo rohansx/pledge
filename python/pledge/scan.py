@@ -10,6 +10,7 @@ from __future__ import annotations
 import io
 import json
 import os
+import shlex
 import tarfile
 import time
 from collections.abc import Callable
@@ -97,8 +98,37 @@ def authored_snapshot(app_dir: Path) -> str | None:
         return None
 
 
-def scan(app_dir: Path, scenario: str, faults_file: Path | None, seeds: int, env: dict[str, str], runs_dir: Path, snapshot: str | None = None, on_seed: Callable[[Path], None] | None = None) -> dict:
-    """With `snapshot`, start from that saved, already-booted sandbox instead of uploading and booting the app."""
+class RebootFailed(RuntimeError):
+    """The app restored from a snapshot did not come back up on another commit's code."""
+
+
+def boot_at_commit(sandbox, app_dir: Path, removed: list[str], sh: Callable = _sh, upload: Callable = _upload) -> None:
+    """Turn a sandbox restored from a snapshot into the app at another commit: lay that commit's tree over
+    /work/app, delete what the commit deleted, and start the app again from its boot recipe.
+
+    E2B CALL SITE (through `sh` and `upload`). Never run against a real sandbox yet; see docs/github-app.md
+    for what it cannot do: it installs nothing (outbound is closed), and it does not reapply a change the
+    boot agent made to the app's own source, because the tree laid over it is the repository's.
+    """
+    for path in removed:
+        # From a diff, so from whoever opened the pull request: a path inside the app or nothing.
+        if path.startswith("/") or ".." in Path(path).parts or "\x00" in path or "\n" in path:
+            raise RebootFailed("a removed path in the diff leaves the app directory")
+    try:
+        sh(sandbox, f"{PLEDGE} down app")  # before the files change under the running processes
+        upload(sandbox, app_dir, APP)  # skips .pledge-run and dependencies; live state under .pledge is not in a repository
+        if removed:
+            sh(sandbox, f"cd {APP} && rm -f -- " + " ".join(shlex.quote(path) for path in removed))
+        sh(sandbox, f"{PLEDGE} boot app", timeout=900)  # the recipe's own commands: migrations and builds it names run again
+        sh(sandbox, CHECK_RUNNING)
+    except RuntimeError as exc:
+        raise RebootFailed(f"the app did not restart at this commit: {exc}") from None
+
+
+def scan(app_dir: Path, scenario: str, faults_file: Path | None, seeds: int, env: dict[str, str], runs_dir: Path, snapshot: str | None = None, on_seed: Callable[[Path], None] | None = None, removed: list[str] | None = None) -> dict:
+    """With `snapshot`, start from that saved, already-booted sandbox instead of uploading and booting the app.
+    With `removed` as well (a list, even an empty one), the snapshot is of another commit and `app_dir` is the
+    commit to test: the app is restarted on its code, or RebootFailed is raised."""
     from e2b import Sandbox
 
     if not 1 <= seeds <= 8:
@@ -130,7 +160,10 @@ def scan(app_dir: Path, scenario: str, faults_file: Path | None, seeds: int, env
     try:
         lap("restore snapshot" if snapshot else "create sandbox")
         _upload(sandbox, Path(__file__).resolve().parent, f"{PACKAGE}/pledge")
-        if snapshot:
+        if snapshot and removed is not None:
+            boot_at_commit(sandbox, app_dir, removed)  # E2B CALL SITE: the pull request path
+            lap("upload and restart")
+        elif snapshot:
             # The app is running as it was when the snapshot was taken. Only what Pledge reads is refreshed: an app
             # may keep live state under .pledge (a Postgres data directory), and overwriting it kills the app.
             for part in PLEDGE_READS:

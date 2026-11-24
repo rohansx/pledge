@@ -13,7 +13,8 @@ import threading
 from datetime import UTC, datetime
 from typing import Protocol
 
-KINDS = ("repo", "run", "pledge", "finding")
+KINDS = ("repo", "run", "pledge", "finding", "job")
+MAX_CLAIMS = 2  # a job whose worker died is handed out once more, then left for `logic.fail_stale_jobs`
 
 
 def now() -> str:
@@ -30,6 +31,11 @@ class Store(Protocol):
     def add_event(self, run_id: str, event_type: str, payload: dict) -> int: ...
     def events_after(self, run_id: str, after: int) -> list[dict]: ...
     def ping(self) -> None: ...
+    def claim_job(self, at: str, stale_before: str) -> dict | None:
+        """Hand the oldest waiting job to exactly one caller, marked running. Waiting means queued, or running
+        since before `stale_before` (its worker died) and not yet handed out MAX_CLAIMS times."""
+        ...
+
     def put_blob(self, key: str, content_type: str, data: bytes) -> None: ...
     def get_blob(self, key: str) -> tuple[str, bytes] | None: ...
 
@@ -72,6 +78,18 @@ class MemoryStore:
 
     def ping(self) -> None:
         return None
+
+    def claim_job(self, at: str, stale_before: str) -> dict | None:
+        with self._lock:
+            waiting = [
+                doc for (kind, _), doc in self._docs.items()
+                if kind == "job" and (doc["status"] == "queued" or (doc["status"] == "running" and doc["claimed_at"] < stale_before and doc["attempts"] < MAX_CLAIMS))
+            ]
+            if not waiting:
+                return None
+            job = min(waiting, key=lambda doc: doc["created_at"])
+            job.update(status="running", claimed_at=at, attempts=job["attempts"] + 1)
+            return copy.deepcopy(job)
 
 
 # ponytail: one document table instead of a table per object. It keeps the store to a few statements, at the
@@ -164,6 +182,20 @@ class PgStore:
     def ping(self) -> None:
         with self._pool.connection() as connection:
             connection.execute("select 1")
+
+    def claim_job(self, at: str, stale_before: str) -> dict | None:
+        # One statement: the inner select locks the row it picks and skips rows another worker has locked, so
+        # two workers asking at once get two different jobs or one gets none. Timestamps are this module's own
+        # now(), always UTC in one format, so comparing them as text orders them.
+        with self._pool.connection() as connection:
+            row = connection.execute(
+                "update doc set data = data || jsonb_build_object('status', 'running', 'claimed_at', %(at)s::text, 'attempts', (data->>'attempts')::int + 1) "
+                "where kind = 'job' and id = (select id from doc where kind = 'job' and (data->>'status' = 'queued' "
+                "or (data->>'status' = 'running' and data->>'claimed_at' < %(stale)s and (data->>'attempts')::int < %(max)s)) "
+                "order by created_at limit 1 for update skip locked) returning data",
+                {"at": at, "stale": stale_before, "max": MAX_CLAIMS},
+            ).fetchone()
+        return row[0] if row else None
 
     def put_blob(self, key: str, content_type: str, data: bytes) -> None:
         with self._pool.connection() as connection:

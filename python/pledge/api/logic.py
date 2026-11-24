@@ -22,10 +22,11 @@ import re
 import uuid
 from datetime import UTC, datetime, timedelta
 
-from pledge.api.models import EventIn, FindingPatch, PledgePatch, RunResultIn, RunStartIn
-from pledge.api.store import Store, now
+from pledge.api.models import EventIn, FindingPatch, GitHubRepo, InstallationEvent, PledgePatch, PullRequestEvent, RunResultIn, RunStartIn
+from pledge.api.store import MAX_CLAIMS, Store, now
 
 SEP = "~"
+JOB_STALE_SECONDS = 60 * 60  # a job running this long has lost its worker
 SOURCES = {"stated": "code", "domain_template": "template", "inferred": "inferred"}
 # Findings a shipped client can cause come first; ones only a direct API caller could cause come last.
 REACH_ORDER = {"ui": 0, "client": 0, "provider": 0, "internal": 0, "unknown": 1, "api_only": 2}
@@ -46,7 +47,7 @@ class Refused(ValueError):
 
 
 def slug(name: str) -> str:
-    value = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")[:60]
+    value = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")[:60].strip("-")  # stripped again: slug(slug(x)) == slug(x)
     if not value:
         raise Refused("a repo name needs at least one letter or digit")
     return value
@@ -124,6 +125,9 @@ def finish_run(store: Store, run_id: str, result: RunResultIn) -> dict:
         finding = _update_finding(store, run, item, plans, stamp)
         if finding and item["result"] == "broken":
             finding_ids.append(finding["id"])
+    if result.authoring and result.authoring.snapshot_id:
+        # Where a pull request scan of this repo starts from: the app as authoring left it, booted.
+        store.put("repo", {**_need(store, "repo", repo_id), "snapshot_id": result.authoring.snapshot_id, "snapshot_commit": run["commit"]})
     view = run_view(store, run)
     store.add_event(run_id, "run_finished", {"verdict": view["verdict"], "summary": view["summary"], "finding_ids": finding_ids})
     return view
@@ -198,6 +202,111 @@ def patch_pledge(store: Store, pledge_id: str, patch: PledgePatch) -> dict:
     pledge.update(status=status, updated_at=stamp, decision={"action": patch.action, "override": patch.override and patch.action == "approve", "note": patch.note, "at": stamp})
     store.put("pledge", pledge)
     return pledge_view(store, pledge)
+
+
+# ---------------------------------------------------------------- GitHub: installations, pull requests, jobs
+# Everything below is reached from a webhook whose signature has been verified, so the caller is GitHub. The
+# payload is still what a stranger can shape (a branch, a fork, a repository name), so only validated fields
+# are stored, and a pull request can never attach itself to a repo it does not belong to.
+
+
+def _bind_repo(store: Store, github_repo: GitHubRepo, installation_id: int) -> dict | None:
+    """The repo document for a GitHub repository, created or claimed on first sight. None when its id is
+    taken by something else: two full names can slug to the same id, and the second one is refused rather
+    than handed the first one's pledges and findings."""
+    link = {"id": github_repo.id, "full_name": github_repo.full_name, "installation_id": installation_id}
+    # ponytail: scans every repo document. Give `github.id` a column when there are hundreds of repos.
+    bound = next((doc for doc in store.list("repo") if (doc.get("github") or {}).get("id") == github_repo.id), None)
+    doc = bound or store.get("repo", slug(github_repo.full_name))
+    if doc is None:
+        doc = {"id": slug(github_repo.full_name), "name": github_repo.full_name, "created_at": now()}
+    elif bound is None and (doc.get("github") or doc["name"].lower() != github_repo.full_name.lower()):
+        # A repo published from the command line is claimed only by the repository it was named after,
+        # `pledge author --publish --app owner/name`: full names are unique on GitHub, slugs are not.
+        return None
+    if doc.get("github") != link:
+        doc = {**doc, "github": link}
+        store.put("repo", doc)
+    return doc
+
+
+def _cancel_queued(store: Store, repo_id: str, reason: str, status: str, pull_request: int | None = None) -> None:
+    for job in store.list("job", repo_id):
+        if job["status"] == "queued" and pull_request in (None, job["pull_request"]):
+            store.put("job", {**job, "status": status, "reason": reason, "finished_at": now()})
+
+
+def github_installation(store: Store, event: InstallationEvent) -> dict:
+    """Keeps repo documents in step with where the app is installed. Removing the app keeps the repo, its
+    pledges and its history; it only stops pull requests from being scanned."""
+    installation_id, gone = event.installation.id, event.action in ("deleted", "suspend")
+    added = [] if gone else [*event.repositories, *event.repositories_added]
+    bound = [repo for repo in added if _bind_repo(store, repo, installation_id) is not None]
+    removed = {repo.id for repo in event.repositories_removed}
+    unbound = 0
+    for doc in store.list("repo"):
+        link = doc.get("github") or {}
+        if link.get("installation_id") == installation_id and (gone or link.get("id") in removed):
+            store.put("repo", {key: value for key, value in doc.items() if key != "github"})
+            _cancel_queued(store, doc["id"], "the GitHub App was removed from this repository", "cancelled")
+            unbound += 1
+    return {"bound": len(bound), "refused": len(added) - len(bound), "unbound": unbound}
+
+
+def github_pull_request(store: Store, event: PullRequestEvent) -> dict | None:
+    """Queue one scan per pull request head commit. None when there is nothing to do."""
+    if event.action not in ("opened", "synchronize", "reopened"):
+        return None
+    repo = _bind_repo(store, event.repository, event.installation.id)
+    if repo is None:
+        return None
+    pull = event.pull_request
+    job_id = SEP.join((repo["id"], str(pull.number), pull.head.sha))
+    existing = store.get("job", job_id)
+    if existing:
+        return job_row(existing)  # GitHub redelivers, and reopening sends the same commit again
+    _cancel_queued(store, repo["id"], "a newer commit was pushed", "superseded", pull.number)
+    job = {
+        "id": job_id, "repo_id": repo["id"], "created_at": now(), "repo": event.repository.full_name,
+        "installation_id": event.installation.id, "pull_request": pull.number, "head_sha": pull.head.sha, "base_sha": pull.base.sha,
+        # A fork's head lives in another repository (or in none, once the fork is deleted). The worker does
+        # not fetch or run it; see docs/github-app.md.
+        "fork": pull.head.repo is None or pull.head.repo.id != event.repository.id,
+        "status": "queued", "attempts": 0, "claimed_at": None, "finished_at": None, "reason": None, "conclusion": None, "check_run_id": None, "run_ids": [],
+    }
+    store.put("job", job)
+    return job_row(job)
+
+
+def job_row(job: dict) -> dict:
+    return {
+        "id": job["id"], "repoId": job["repo_id"], "createdAt": job["created_at"], "finishedAt": job["finished_at"],
+        "pullRequest": job["pull_request"], "headSha": job["head_sha"], "baseSha": job["base_sha"], "fork": job["fork"],
+        "status": job["status"], "conclusion": job["conclusion"], "reason": job["reason"], "attempts": job["attempts"], "runIds": job["run_ids"],
+    }
+
+
+def job_list(store: Store, repo_id: str) -> list[dict]:
+    _need(store, "repo", repo_id)
+    return [job_row(job) for job in store.list("job", repo_id)]
+
+
+def _stale_before() -> str:
+    return (datetime.now(UTC) - timedelta(seconds=JOB_STALE_SECONDS)).isoformat()
+
+
+def claim_job(store: Store) -> dict | None:
+    return store.claim_job(now(), _stale_before())
+
+
+def fail_stale_jobs(store: Store) -> list[dict]:
+    """Jobs still running after their second hand-out went stale: nothing will pick them up again."""
+    stale, failed = _stale_before(), []
+    for job in store.list("job"):
+        if job["status"] == "running" and job["claimed_at"] < stale and job["attempts"] >= MAX_CLAIMS:
+            failed.append({**job, "status": "failed", "reason": "the worker stopped twice without finishing this job", "finished_at": now()})
+            store.put("job", failed[-1])
+    return failed
 
 
 # ---------------------------------------------------------------- reads

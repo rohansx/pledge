@@ -9,6 +9,7 @@
     pledge scan APP_DIR --scenario NAME --faults FILE [--seeds N] [--env KEY=VALUE ...]
     pledge author APP_DIR --out DIR
     pledge publish APP_DIR RUN_DIR [RUN_DIR ...] [--faults FILE] [--app NAME]
+    pledge worker
 """
 
 from __future__ import annotations
@@ -90,6 +91,8 @@ def _parser() -> argparse.ArgumentParser:
     author.add_argument("--json", action="store_true")
     author.add_argument("--publish", action="store_true", help="show the run live in the dashboard and send its baseline results")
     author.add_argument("--app", help="repo name shown in the dashboard (default: the app directory's name)")
+
+    commands.add_parser("worker", help="scan queued pull requests and report to GitHub; configured by the environment")
     return parser
 
 
@@ -120,6 +123,10 @@ def _publish_baselines(args: argparse.Namespace, report: dict, live) -> None:
 def main(argv: list[str] | None = None) -> int:
     args = _parser().parse_args(argv)
     try:
+        if args.command == "worker":
+            from pledge.worker import main as worker  # imported here: only this command needs the API's dependencies
+
+            return worker()
         if args.command == "boot":
             print(json.dumps(local.boot(args.app_dir, _env(args.env))))
             return 0
