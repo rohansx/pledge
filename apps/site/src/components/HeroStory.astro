@@ -1,0 +1,36 @@
+---
+// The hero's story of one pull request: the usual checks go green, then Pledge runs 40 times,
+// finds a broken rule and blocks the merge, with the customer impact spelled out.
+// Driven by src/scripts/hero-story.ts, which cycles through three different bugs.
+import Mark from './Mark.astro';
+---
+<figure class="story" id="story" aria-label="A pull request where unit tests pass but Pledge finds a broken rule and blocks the merge">
+  <div class="s-head">
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><circle cx="4" cy="3.5" r="1.6" /><circle cx="4" cy="12.5" r="1.6" /><circle cx="12" cy="12.5" r="1.6" /><path d="M4 5v6M12 11V6.5A2.5 2.5 0 0 0 9.5 4H7" /><path d="M8.5 2.5 7 4l1.5 1.5" /></svg>
+    <b id="sTitle">Retry failed checkouts</b><span class="mute" id="sNum">#482</span>
+    <span class="s-dots" aria-hidden="true"><i class="on"></i><i></i><i></i></span>
+  </div>
+
+  <div class="checks">
+    <div class="chk" id="cUnit"><i class="st"></i><b>Unit tests</b><span id="cUnitT">waiting</span></div>
+    <div class="chk" id="cInt"><i class="st"></i><b>Integration tests</b><span id="cIntT">waiting</span></div>
+    <div class="chk" id="cPl"><i class="st"></i><b>Pledge</b><span id="cPlT">waiting</span></div>
+  </div>
+
+  <div class="s-body">
+    <div class="s-rule" id="sRule">One charge per payment.</div>
+    <div class="s-runs" id="sRuns" aria-hidden="true"></div>
+    <dl class="s-facts" id="sFacts">
+      <div><dt>broke on</dt><dd class="bad" id="fBroke">7 of 40 runs</dd></div>
+      <div><dt>found</dt><dd id="fFound">2 charges for pay_8812, expected 1</dd></div>
+      <div><dt>cause</dt><dd id="fCause">/checkout ignores the Idempotency-Key header</dd></div>
+      <div class="impact"><dt>impact</dt><dd id="fImpact">A customer is charged $98 for a $49 order</dd></div>
+    </dl>
+    <code class="s-replay" id="sReplay">$ pledge replay r_91c --seed 0x0e</code>
+  </div>
+
+  <div class="merge" id="sMerge">
+    <span class="m-ic" aria-hidden="true"><Mark size={12} /></span>
+    <span id="sMergeT">Merge blocked: your tests passed, Pledge didn't.</span>
+  </div>
+</figure>

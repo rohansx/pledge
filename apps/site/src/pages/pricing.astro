@@ -1,0 +1,69 @@
+---
+import Base from '../layouts/Base.astro';
+import Nav from '../components/Nav.astro';
+import Footer from '../components/Footer.astro';
+
+const title = 'Pricing — Pledge';
+const description = 'Pledge is free to run locally with the open-source CLI. Teams run it on every pull request. Free for design partners during the beta.';
+
+// Prices are placeholders until launch; change them here.
+const plans = [
+  { name: 'Open source', price: '$0', per: 'forever', blurb: 'The CLI. Run Pledge on your own machine.',
+    cta: ['Get notified', '/#join'],
+    items: ['Write and check rules locally', 'Fault proxy and recording fakes', 'Replay any run from its seed', 'Rules as plain files in your repo'] },
+  { name: 'Team', price: '$149', per: 'per repo / month', blurb: 'Pledge on every pull request, with the rules written for you.',
+    badge: 'Free for design partners', featured: true, cta: ['Get early access', '/#join'],
+    items: ['Everything in Open source', 'Claude writes and proves the rules', 'A required check on every pull request', '40 runs per scan, more when results disagree', 'Hosted, isolated sandboxes', 'Evidence kept for 30 days'] },
+  { name: 'Enterprise', price: 'Custom', per: 'annual', blurb: 'For teams with their own cloud and compliance needs.',
+    cta: ['Talk to us', '/#join'],
+    items: ['Everything in Team', 'Runs in your own cloud', 'SSO and audit log', 'Your data-retention rules', 'Onboarding and a dedicated engineer'] },
+];
+
+const faq = [
+  ['What counts as a run?', 'One copy of your app, started from the saved snapshot, with one fault plan. A scan is usually 40 runs, and grows only when results disagree.'],
+  ['Which stacks do you support?', 'Python and TypeScript apps on Postgres first. More after the beta.'],
+  ['Is my code safe?', 'Each scan runs in its own isolated microVM with the network closed after install. Third-party calls go to recording fakes, and no production secrets enter the sandbox.'],
+  ['What do design partners get?', 'Pledge free during the beta, a hands-on first scan of your repo, and a say in what we build next.'],
+];
+---
+<Base title={title} description={description}>
+  <Nav />
+  <main>
+    <header class="wrap price-hero">
+      <div class="eyebrow">Pricing</div>
+      <h1>Pay for the bugs you don’t ship.</h1>
+      <p class="sub">Free to run locally. Teams run it on every pull request. Free for design partners during the beta.</p>
+    </header>
+
+    <section class="plans-sec" aria-label="Plans">
+      <div class="wrap plans">
+        {plans.map((p) => (
+          <article class:list={['plan', 'glass', { featured: p.featured }]}>
+            <div class="plan-top">
+              <h2>{p.name}</h2>
+              {p.badge && <span class="plan-badge">{p.badge}</span>}
+            </div>
+            <div class="price"><b>{p.price}</b><span>{p.per}</span></div>
+            <p class="blurb">{p.blurb}</p>
+            <a class:list={['btn', p.featured ? 'btn-dark' : 'btn-line']} href={p.cta[1]} data-focus-join>{p.cta[0]}</a>
+            <ul>{p.items.map((it) => <li>{it}</li>)}</ul>
+          </article>
+        ))}
+      </div>
+    </section>
+
+    <section aria-labelledby="faq-h">
+      <div class="wrap faq-wrap">
+        <h2 id="faq-h">Questions</h2>
+        <div class="faq">
+          {faq.map(([q, a]) => <details><summary>{q}</summary><p>{a}</p></details>)}
+        </div>
+      </div>
+    </section>
+  </main>
+  <Footer />
+
+  <script>
+    import '../scripts/ui.ts';
+  </script>
+</Base>
