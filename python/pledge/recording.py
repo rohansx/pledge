@@ -80,7 +80,8 @@ def recording(run_dir: Path, assertion: str, statement: str) -> dict | None:
         return None
     traffic = json.loads(traffic_file.read_text())
     journey = _journey(row, traffic)
-    entries = [entry for entry in traffic if journey and entry.get("journey") == journey]
+    # The log is written as replies finish; concurrent copies finish out of order, so replay by start time.
+    entries = sorted((entry for entry in traffic if journey and entry.get("journey") == journey), key=lambda entry: entry["at_ms"])
     if not entries:
         return None
     start = entries[0]["at_ms"]

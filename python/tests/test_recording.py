@@ -32,6 +32,15 @@ def test_a_per_journey_failure_replays_the_journey_it_names(tmp_path):
     assert rec["steps"][-1]["text"] == "Broken: One lead per mention. (expected 1, found 2)"
 
 
+def test_steps_follow_when_requests_happened_not_when_the_log_got_them(tmp_path):
+    # Two concurrent copies finish out of order, so the log lists the later one first.
+    traffic = [entry(300, "j-1", "/charge"), entry(250, "j-1", "/charge"), entry(500, "j-1", "/order")]
+    row = {"id": "once", "status": "fail", "failures": [{"logical_key": "j-1", "expected": 1, "actual": 2}]}
+    rec = recording(run_dir(tmp_path, row, traffic), "once", "Charged once.")
+
+    assert [s["at"] for s in rec["steps"]] == [0, 50, 250, 250]
+
+
 def test_a_whole_run_failure_replays_the_first_journey_a_fault_hit(tmp_path):
     row = {"id": "charges_match", "status": "fail", "expected": 20, "actual": 26}
     rec = recording(run_dir(tmp_path, row, TRAFFIC), "charges_match", "Charges equal paid orders.")
