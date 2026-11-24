@@ -42,9 +42,9 @@ export function LoginPage() {
           <span className="text-[13px] font-medium">Access token</span>
           <input type="password" autoComplete="current-password" required value={token} onChange={(event) => setValue(event.target.value)} className="mt-1.5 h-9 w-full rounded-md border border-line bg-card px-3 font-mono text-[13px] shadow-xs" />
         </label>
-        <div className="mt-4 flex items-center gap-3">
+        <div className="mt-4 flex flex-col gap-3">
           <Button type="submit" variant="default" className="w-full justify-center" disabled={busy || token.trim() === ""}>{busy ? "Checking…" : "Sign in"}</Button>
-          {error ? <span role="alert" className="font-mono text-xs text-seal">{error}</span> : null}
+          {error ? <span role="alert" className="rounded-md border border-seal/25 bg-seal-wash px-3 py-2 text-[13px] text-seal">{error}</span> : null}
         </div>
       </form>
     </div>
