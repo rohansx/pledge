@@ -30,13 +30,22 @@ class Store(Protocol):
     def add_event(self, run_id: str, event_type: str, payload: dict) -> int: ...
     def events_after(self, run_id: str, after: int) -> list[dict]: ...
     def ping(self) -> None: ...
+    def put_blob(self, key: str, content_type: str, data: bytes) -> None: ...
+    def get_blob(self, key: str) -> tuple[str, bytes] | None: ...
 
 
 class MemoryStore:
     def __init__(self) -> None:
         self._docs: dict[tuple[str, str], dict] = {}
         self._events: list[dict] = []
+        self._blobs: dict[str, tuple[str, bytes]] = {}
         self._lock = threading.Lock()
+
+    def put_blob(self, key: str, content_type: str, data: bytes) -> None:
+        self._blobs[key] = (content_type, data)
+
+    def get_blob(self, key: str) -> tuple[str, bytes] | None:
+        return self._blobs.get(key)
 
     def get(self, kind: str, doc_id: str) -> dict | None:
         with self._lock:
@@ -86,6 +95,13 @@ create table if not exists run_event (
   payload jsonb not null
 );
 create index if not exists run_event_run on run_event (run_id, seq);
+-- ponytail: recordings live in the database, a few MB each. Move them to object storage when backups get slow.
+create table if not exists blob (
+  key text primary key,
+  content_type text not null,
+  data bytea not null,
+  created_at timestamptz not null default now()
+);
 """
 
 
@@ -148,3 +164,16 @@ class PgStore:
     def ping(self) -> None:
         with self._pool.connection() as connection:
             connection.execute("select 1")
+
+    def put_blob(self, key: str, content_type: str, data: bytes) -> None:
+        with self._pool.connection() as connection:
+            connection.execute(
+                "insert into blob (key, content_type, data) values (%s, %s, %s) "
+                "on conflict (key) do update set content_type = excluded.content_type, data = excluded.data",
+                (key, content_type, data),
+            )
+
+    def get_blob(self, key: str) -> tuple[str, bytes] | None:
+        with self._pool.connection() as connection:
+            row = connection.execute("select content_type, data from blob where key = %s", (key,)).fetchone()
+        return (row[0], bytes(row[1])) if row else None

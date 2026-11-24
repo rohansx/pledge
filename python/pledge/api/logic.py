@@ -114,6 +114,19 @@ def finish_run(store: Store, run_id: str, result: RunResultIn) -> dict:
     return view
 
 
+def media_key(run_id: str, name: str) -> str:
+    return f"run/{run_id}/{name}"
+
+
+def add_media(store: Store, run_id: str, name: str, content_type: str, data: bytes, seed: int, journey: str) -> dict:
+    run = _need(store, "run", run_id)
+    store.put_blob(media_key(run_id, name), content_type, data)
+    files = sorted({*(run.get("media") or {}).get("files", []), name})
+    run["media"] = {"seed": seed, "journey": journey, "files": files}
+    store.put("run", run)
+    return run["media"]
+
+
 def _update_finding(store: Store, run: dict, pledge: dict, item, faults_name: str | None, stamp: str) -> dict | None:
     """Open, reopen or verify the finding for one pledge after a run. One finding per pledge at a time."""
     existing = next((finding for finding in store.list("finding", run["repo_id"]) if finding["pledge_id"] == pledge["id"]), None)
@@ -327,6 +340,8 @@ def finding_view(store: Store, finding: dict) -> dict:
         # The recording is one broken journey as the proxy saw it; runs from before the proxy logged traffic have none.
         # Nothing shrinks a fault plan yet, so that stays empty rather than invented.
         "timeline": recording["steps"] if recording else [], "recording": recording and {key: recording[key] for key in ("seed", "journey", "faults_hit")},
+        # A browser recording of what the broken journey's user sees, when the scenario has browser steps.
+        "browser": run.get("media") and {**run["media"], "runId": run["id"]},
         "minimalFaultPlan": [],
         "replayCommand": _replay(run.get("scenario") or "", finding.get("faults_name"), recording["seed"] if recording else (finding["broken_seeds"] or [1])[0]),
         "history": finding["history"], "blocks": pledges.get(finding["pledge_id"], {}).get("status") == "approved",

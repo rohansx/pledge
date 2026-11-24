@@ -137,6 +137,8 @@ def scan(app_dir: Path, scenario: str, faults_file: Path | None, seeds: int, env
                 if (app_dir / ".pledge" / part).is_dir():
                     _upload(sandbox, app_dir / ".pledge" / part, f"{APP}/.pledge/{part}")
             lap("upload")
+            # The proxy in the snapshot is the one it was saved with; run the one just uploaded.
+            _sh(sandbox, f"""cd /work && PYTHONPATH={PACKAGE} python3 -c "from pathlib import Path; from pledge import local; local.restart_proxy(Path('app'))" """)
             _sh(sandbox, f"{CHECK_RUNNING}")
         else:
             _upload(sandbox, app_dir, APP)

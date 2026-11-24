@@ -261,3 +261,22 @@ def test_jsonb_text_never_carries_a_nul():
     from pledge.api.store import _jsonb
 
     assert _jsonb({"a\x00": ["b\x00", 1, None, {"c": "d\x00e"}]}) == '{"a": ["b", 1, null, {"c": "de"}]}'
+
+
+def test_a_runs_browser_recording_is_stored_served_and_shown_on_its_finding(client):
+    run = scan(client, [pledge("one-lead", "broken")])
+    finding = client.get(f"/api/findings/{run['findingIds'][0]}").json()["data"]
+    assert finding["browser"] is None
+
+    media = f"/api/runs/{run['id']}/media"
+    for name, body in (("trace.zip", b"PK\x03\x04trace"), ("screenshot.png", b"\x89PNG")):
+        assert client.put(f"{media}/{name}?seed=2&journey=j-3", content=body).status_code == 201
+    assert client.get(f"/api/findings/{finding['id']}").json()["data"]["browser"] == {"seed": 2, "journey": "j-3", "files": ["screenshot.png", "trace.zip"], "runId": run["id"]}
+    served = client.get(f"{media}/trace.zip")
+    assert (served.content, served.headers["content-type"]) == (b"PK\x03\x04trace", "application/zip")
+
+    assert client.get(f"{media}/trace.zip", headers={"authorization": ""}).status_code == 401
+    assert client.get(f"{media}/video.webm").status_code == 404  # an allowed name, never stored
+    assert client.put(f"{media}/evil.html?seed=1&journey=j", content=b"<script>").status_code == 404
+    assert client.put(f"/api/runs/missing/media/trace.zip?seed=1&journey=j", content=b"x").status_code == 404
+    assert client.put(f"{media}/trace.zip?seed=1&journey=j", content=b"").status_code == 422

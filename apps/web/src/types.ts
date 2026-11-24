@@ -140,6 +140,7 @@ export interface FindingDetail extends Finding {
   faultPlan: FaultPlan | null;
   timeline: RecordingStep[];
   recording: { seed: number; journey: string; faults_hit: number } | null;
+  browser: BrowserMedia | null;
   minimalFaultPlan: { fault: string; target: string }[];
   replayCommand: string;
   history: { at: string; status: FindingStatus; run_id: string | null }[];
@@ -177,4 +178,12 @@ export interface RunEvent {
   seq: number;
   type: "phase_started" | "phase_step" | "pledge_proposed" | "pledge_proven" | "seed_finished" | "run_finished";
   data: Record<string, unknown> & { at?: string };
+}
+
+/** A browser recording stored for a run: which journey's user it shows and which files exist. */
+export interface BrowserMedia {
+  runId: string;
+  seed: number;
+  journey: string;
+  files: string[];
 }

@@ -11,6 +11,7 @@ import json
 import os
 import sys
 import urllib.error
+import urllib.parse
 import urllib.request
 from pathlib import Path
 
@@ -134,13 +135,14 @@ class LiveRun:
         self.id, self.repo_id = run["id"], run["repoId"]
         self.url = f"{self.api}/r/{self.repo_id}/runs/{self.id}"
 
-    def _call(self, method: str, path: str, body: dict) -> dict:
+    def _call(self, method: str, path: str, body: dict | bytes) -> dict:
+        raw = isinstance(body, bytes)
         request = urllib.request.Request(
-            self.api + path, data=json.dumps(body).encode(), method=method,
-            headers={"content-type": "application/json", "authorization": f"Bearer {self._token}"},
+            self.api + path, data=body if raw else json.dumps(body).encode(), method=method,
+            headers={"content-type": "application/octet-stream" if raw else "application/json", "authorization": f"Bearer {self._token}"},
         )
         try:
-            with urllib.request.urlopen(request, timeout=30) as response:
+            with urllib.request.urlopen(request, timeout=120 if raw else 30) as response:
                 return json.load(response)["data"]
         except urllib.error.HTTPError as error:
             try:
@@ -166,3 +168,22 @@ class LiveRun:
 
     def finish(self, record: dict) -> dict:
         return self._call("POST", f"/api/runs/{self.id}/result", record)
+
+    def media(self, run_dirs: list[Path]) -> list[str]:
+        """Send the browser recording of the first seed that has one. Best effort, like progress."""
+        for run_dir in sorted(run_dirs, key=lambda path: json.loads((path / "result.json").read_text())["seed"]):
+            info_file = run_dir / "pledge" / "browser" / "browser.json"
+            if not info_file.is_file():
+                continue
+            info, seed = json.loads(info_file.read_text()), json.loads((run_dir / "result.json").read_text())["seed"]
+            if "trace.zip" not in info["files"]:
+                continue
+            query = urllib.parse.urlencode({"seed": seed, "journey": info["journey"]})
+            try:
+                for name in info["files"]:
+                    self._call("PUT", f"/api/runs/{self.id}/media/{name}?{query}", (info_file.parent / name).read_bytes())
+            except RuntimeError as exc:
+                print(f"pledge: browser recording not sent: {exc}", file=sys.stderr)
+                return []
+            return info["files"]
+        return []

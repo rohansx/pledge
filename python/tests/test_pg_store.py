@@ -55,3 +55,12 @@ def test_text_with_a_nul_character_is_stored_without_it(stores):
     pg, _ = stores
     assert pg.get("run", doc["id"])["reply"] == "ab" and pg.get("run", doc["id"])["steps"] == [{"t": "c"}]
 
+
+
+def test_a_blob_comes_back_byte_for_byte_and_is_replaced_by_key(stores):
+    key = f"run/{uuid.uuid4()}/trace.zip"
+    for store in stores:
+        assert store.get_blob(key) is None
+        store.put_blob(key, "application/zip", b"\x00\x01first")
+        store.put_blob(key, "application/zip", b"\x00\xffsecond")
+        assert store.get_blob(key) == ("application/zip", b"\x00\xffsecond")

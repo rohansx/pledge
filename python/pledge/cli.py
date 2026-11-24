@@ -155,6 +155,7 @@ def main(argv: list[str] | None = None) -> int:
 
             run_dirs = [Path(path) for path in report.get("run_dirs", [])] or args.runs
             live.finish(build_record(args.app_dir, report, run_dirs, args.faults, _env(args.env)))
+            live.media(run_dirs)
             print(f"published: {live.url}", file=sys.stderr)
         return {"kept": 0, "broken": 1}.get(report["verdict"], 2)
     except (local.BootError, PledgeError, ValueError, OSError, RuntimeError) as exc:

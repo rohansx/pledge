@@ -40,3 +40,6 @@ runs/
 *.db
 *.egg-info/
 evidence/
+
+# Playwright trace viewer, copied in for local development; the image gets it in apps/web/Dockerfile
+apps/web/public/trace/

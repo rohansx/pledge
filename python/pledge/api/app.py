@@ -18,7 +18,7 @@ from collections.abc import AsyncIterator, Callable
 import anyio
 from fastapi import APIRouter, Depends, FastAPI, HTTPException, Query, Request
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.responses import JSONResponse, Response, StreamingResponse
 
 from pledge.api import logic
 from pledge.api.models import EventIn, FindingPatch, PledgePatch, RunResultIn, RunStartIn
@@ -26,6 +26,9 @@ from pledge.api.store import Store
 
 log = logging.getLogger("pledge.api")
 MAX_BODY_BYTES = 2 * 1024 * 1024
+MAX_MEDIA_BYTES = 32 * 1024 * 1024
+# A browser recording of a run: what the files are, and so the only names a client may store or fetch.
+MEDIA_TYPES = {"trace.zip": "application/zip", "video.webm": "video/webm", "screenshot.png": "image/png"}
 STREAM_POLL_SECONDS = 1.0
 STREAM_MAX_SECONDS = 60 * 60
 
@@ -86,7 +89,8 @@ def create_app(store: Store, token: str | None, version: str = "dev", public_url
     @app.middleware("http")
     async def limit_body(request: Request, call_next):
         length = request.headers.get("content-length")
-        if length and length.isdigit() and int(length) > MAX_BODY_BYTES:
+        limit = MAX_MEDIA_BYTES if request.method == "PUT" and "/media/" in request.url.path else MAX_BODY_BYTES
+        if length and length.isdigit() and int(length) > limit:
             return fail(413, "body too large")
         return await call_next(request)
 
@@ -168,6 +172,27 @@ def create_app(store: Store, token: str | None, version: str = "dev", public_url
     @api.post("/runs/{run_id}/result")
     def finish(run_id: str, result: RunResultIn) -> JSONResponse:
         return ok(logic.finish_run(store, run_id, result), 201)
+
+    @api.put("/runs/{run_id}/media/{name}")
+    async def put_media(run_id: str, name: str, request: Request, seed: int = Query(ge=0), journey: str = Query(max_length=200)) -> JSONResponse:
+        """Stores one file of the browser recording made for a broken journey of this run."""
+        if name not in MEDIA_TYPES:
+            raise logic.NotFound(name)
+        data = b""
+        async for chunk in request.stream():  # counted as it arrives: a body may come without a content-length
+            data += chunk
+            if len(data) > MAX_MEDIA_BYTES:
+                return fail(413, "body too large")
+        if not data:
+            return fail(422, "invalid request: body: empty")
+        return ok(await anyio.to_thread.run_sync(logic.add_media, store, run_id, name, MEDIA_TYPES[name], data, seed, journey), 201)
+
+    @api.get("/runs/{run_id}/media/{name}")
+    def get_media(run_id: str, name: str) -> Response:
+        blob = store.get_blob(logic.media_key(run_id, name)) if name in MEDIA_TYPES else None
+        if blob is None:
+            raise logic.NotFound(name)
+        return Response(blob[1], media_type=blob[0], headers={"cache-control": "private, max-age=3600", "x-content-type-options": "nosniff"})
 
     @api.get("/runs/{run_id}/comment")
     def comment(run_id: str) -> JSONResponse:
