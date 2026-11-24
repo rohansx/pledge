@@ -138,5 +138,8 @@ def test_browser_steps_must_load_and_stay_inside_the_sandbox(app):
     steps.write_text('module.exports = async (page) => { await page.goto("https://cinema.example.com/login"); };\n')
     assert "names URLs outside the sandbox, which is closed: https://cinema.example.com/login" in problems(app)[0]
 
+    steps.write_text('module.exports = async (page) => { await page.goto("http://localhost.cinema.example.com/login"); };\n')
+    assert "names URLs outside the sandbox" in problems(app)[0]  # a host that only starts like the sandbox's
+
     steps.write_text("module.exports = async (page) => {\n")
     assert "scenario booking: browser.cjs does not load" in problems(app)[0]

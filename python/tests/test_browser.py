@@ -76,6 +76,17 @@ def test_a_typed_secret_is_masked_in_every_file_of_the_trace_however_it_is_spell
     assert json.loads(lines[1]["snapshot"]) == ["INPUT", {"__playwright_value_": "********"}]  # JSON inside JSON
 
 
+def test_a_secret_stays_masked_around_a_character_the_page_encoded_its_own_way(tmp_path):
+    # A form on a page that is not UTF-8 sends ü as %FC, and the trace's reading of that body has U+FFFD for it.
+    trace(tmp_path / "trace.zip", {"body.dat": "password=correct-horse+%FC+battery", "trace.network": json.dumps({"value": "correct-horse � battery"})})
+
+    local.scrub_trace(tmp_path / "trace.zip", ["correct-horse ü battery"])
+
+    with zipfile.ZipFile(tmp_path / "trace.zip") as archive:
+        after = b"".join(archive.read(name) for name in archive.namelist())
+    assert b"horse" not in after and b"battery" not in after
+
+
 def test_the_runners_report_of_what_was_typed_masks_the_trace_and_the_error_and_is_not_kept(tmp_path, monkeypatch):
     steps = tmp_path / "browser.cjs"
     steps.write_text("")

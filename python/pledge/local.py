@@ -8,6 +8,7 @@ from __future__ import annotations
 import html
 import json
 import os
+import re
 import signal
 import subprocess
 import sys
@@ -236,8 +237,12 @@ def record_browser(steps: Path, out: Path, journey: str) -> dict:
 
 
 def _maskable(secrets: list[str]) -> list[str]:
-    """Longest first, so a password goes before its own prefixes, which typing key by key also reports."""
-    return sorted({secret for secret in secrets if len(secret) >= MIN_SECRET_CHARS}, key=len, reverse=True)
+    """Longest first, so a password goes before its own prefixes, which typing key by key also reports.
+
+    A secret's ASCII stretches are masked on their own as well: a page that is not UTF-8 submits `ü` as `%FC`,
+    a spelling nothing here predicts, and the rest of the password would otherwise stay readable around it."""
+    parts = {part for secret in secrets for part in (secret, *re.split(r"[^\x00-\x7f]+", secret))}
+    return sorted((part for part in parts if len(part) >= MIN_SECRET_CHARS), key=len, reverse=True)
 
 
 def scrub_trace(trace: Path, secrets: list[str]) -> None:
@@ -251,7 +256,9 @@ def scrub_trace(trace: Path, secrets: list[str]) -> None:
     transformed (base64 in a Basic header, a hash), one shorter than MIN_SECRET_CHARS (masking "abc" everywhere
     would wreck the trace), or one drawn as pixels in the screenshots and the video (a password field draws
     dots, unless the page has a show-password toggle and the steps click it). Tokens and cookies the app hands
-    the synthetic user are left in. Parse the trace's JSON instead if any of these starts to matter."""
+    the synthetic user are left in. Typed key by key, every prefix of MIN_SECRET_CHARS or more is masked too
+    (the snapshots between keys hold them), so a password that starts with a common word blanks that word
+    wherever the trace has it, `type="password"` included, and its first five characters stay readable. Parse the trace's JSON instead if any of these starts to matter."""
     spellings: list[bytes] = []
     for secret in _maskable(secrets):
         once = json.dumps(secret)[1:-1]

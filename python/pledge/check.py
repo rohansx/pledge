@@ -28,7 +28,7 @@ CALLERS_FILE = ".pledge/callers.json"
 CALLER_KINDS = tuple(reach for reach in REACHES if reach != "api_only")  # a route nothing shipped calls has no callers
 REPEATS = ("retries", "double_submit", "redelivers")
 ROUTE = re.compile(r"^[A-Z]+ /\S*$")
-EXTERNAL_URL = re.compile(r"""https?://(?!127\.0\.0\.1\b|localhost\b)[^\s"'`]+""")
+EXTERNAL_URL = re.compile(r"""https?://(?!(?:127\.0\.0\.1|localhost)(?![\w.-]))[^\s"'`]+""")
 ID_SEGMENT = re.compile(r"/(\d+|[0-9a-fA-F-]{16,})(?=/|$)")
 MAX_UNLISTED = 8 # of the requests a scenario made that callers.json does not cover, named per scenario
 
