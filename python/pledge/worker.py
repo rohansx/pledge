@@ -118,15 +118,27 @@ def run_job(store: Store, job: dict, github_for: Callable[[dict], GitHub], scan:
                 # A pledge first seen in a pull request is proposed, whatever status its file claims: the files
                 # are the pull request author's, and only a person in the dashboard approves. (A pledge the
                 # catalogue already knows keeps the status decided there; finish_run ignores the file's.)
-                record = {**record, "pledges": [{**pledge, "status": "proposed"} for pledge in record["pledges"]]}
+                # `authoring` is dropped for the same reason: build_record reads it from a file in the tree, and
+                # finish_run would save the snapshot it names as the one every later scan of this repo restores.
+                record = {**record, "authoring": None, "pledges": [{**pledge, "status": "proposed"} for pledge in record["pledges"]]}
                 views.append(logic.finish_run(store, open_run["id"], RunResultIn.model_validate(record)))
                 open_run = None
         broken = sum(1 for view in views if view["verdict"] == "broken")
         markdown = "\n\n---\n\n".join(logic.pr_comment(store, logic._need(store, "run", view["id"]), public_url) for view in views)
         if len(pairs) > MAX_RUNS:
             markdown += f"\n\n{len(pairs) - MAX_RUNS} more scenario and fault plan pairs were touched and not run: a pull request gets at most {MAX_RUNS} scans."
-        github.upsert_comment(job["repo"], job["pull_request"], markdown)
-        title = "An approved pledge broke" if broken else f"No approved pledge broke ({len(views)} scans)"
+        own = sorted({changed["path"] for changed in pr.parse_diff(diff) if changed["path"].startswith(".pledge/")})
+        if own:
+            # The scenarios and pledge files that ran are the pull request's own, so a change to them can make a
+            # pledge pass by checking less. Code cannot tell; the reviewer is told.
+            markdown += f"\n\n**This pull request changes Pledge's own files** ({len(own)} under `.pledge/`, such as `{own[0][:200]}`). The checks ran as this pull request defines them: review those changes as you would a change to a test."
+        try:
+            github.upsert_comment(job["repo"], job["pull_request"], markdown)
+        except GitHubError as exc:
+            # The check below carries the same text and the verdict. Losing the comment must not turn a
+            # broken approved pledge into "Pledge could not run".
+            log.warning("job %s: the comment was not posted: %s", job["id"], exc)
+        title ="An approved pledge broke" if broken else f"No approved pledge broke ({len(views)} scans)"
         return _conclude(store, job, github, "done", "failure" if broken else "neutral", title, markdown)
     except Exception as exc:  # noqa: BLE001 - a job never takes the worker down, and its check never stays in progress
         log.warning("job %s failed: %s", job["id"], type(exc).__name__)  # the type only: a message can quote a sandbox

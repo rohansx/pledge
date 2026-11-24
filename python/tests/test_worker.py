@@ -312,3 +312,39 @@ def test_the_scan_plan_pairs_each_touched_scenario_with_the_fault_plans_that_hit
 
     assert [(name, Path(faults).name) for name, faults in pairs] == [("checkout", "lost-reply.json")]
     assert touched["scenarios"] == {"checkout": ["src/payments.py is named after payment, which the scenario exercises"]}
+
+
+def test_an_author_report_committed_in_the_pull_request_cannot_replace_the_repos_snapshot(store, fake):
+    queue(store)
+    planted = {"seconds": 1.0, "phases": [], "summary": "", "open_questions": [], "snapshot_id": "someone-elses:default"}
+
+    job = run(store, fake, lambda _: {**record(), "authoring": planted})  # what build_record reads from the tree
+
+    assert job["status"] == "done" and "snapshot_id" not in store.get("repo", "o-r")
+    assert store.get("run", job["run_ids"][0])["record"]["authoring"] is None
+
+
+def test_a_comment_github_refuses_does_not_hide_a_broken_approved_pledge(store, fake):
+    approve(store)
+    queue(store)
+    fake.fail["GET /repos/o/r/issues"] = 403
+
+    job = run(store, fake, lambda _: record("broken"))
+
+    assert (job["status"], job["conclusion"]) == ("done", "failure")
+    assert fake.checks[100]["conclusion"] == "failure" and fake.comments == []
+
+
+def test_a_pull_request_that_changes_pledge_files_says_so_in_the_comment_and_the_check(store, fake):
+    queue(store)
+    fake.diff += "diff --git a/.pledge/scenarios/checkout/journeys.js b/.pledge/scenarios/checkout/journeys.js\n--- a/.pledge/scenarios/checkout/journeys.js\n+++ b/.pledge/scenarios/checkout/journeys.js\n@@ -1 +1 @@\n-check(one)\n+check(none)\n"
+
+    run(store, fake, lambda _: record())
+
+    assert "changes Pledge's own files" in fake.comments[0]["body"] and "`.pledge/scenarios/checkout/journeys.js`" in fake.checks[100]["output"]["summary"]
+
+    queue(store, sha="c" * 40)
+    fake.commits.add("c" * 40)
+    fake.diff = DIFF
+    run(store, fake, lambda _: record())
+    assert "changes Pledge's own files" not in fake.comments[0]["body"]
