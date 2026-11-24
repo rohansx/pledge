@@ -80,7 +80,7 @@ function mount({ stage, svg, read }, value) {
     if (!over) {
       for (const f of forks) f.sp.t = f.h0;
       light(bySeed.get(REST_SEED));
-      read.textContent = "rest";
+      read.textContent = "point at a run";
       B.wake();
       return;
     }
