@@ -8,21 +8,41 @@ to its dependencies carry no journey key, so they are not in the recording.
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 MAX_STEPS = 80
+GRAPHQL_OPERATION = re.compile(r"\b(mutation|query)\b[^{]*\{\s*(\w+)")
 
 
 def _journey(row: dict, traffic: list[dict]) -> str | None:
-    """The journey to replay: the one the check named, else (for a whole-run check) the first one a fault hit."""
+    """The journey to replay: the one the check named, else (for a whole-run check) the user journey whose lost
+    reply came furthest into its flow, earliest on a tie. Late requests commit state (a capture, a completed
+    order); early ones are logins and lookups. The engine's own `setup` is a last resort: it shows a login.
+    ponytail: "furthest in" is a guess at the journey that shows the bug; matching the fault to the check is better."""
     for failure in row.get("failures") or []:
         if failure.get("logical_key"):
             return failure["logical_key"]
-    return next((entry["journey"] for entry in traffic if entry.get("journey") and entry.get("fault") is not None), None)
+    seen: dict[str, int] = {}
+    depth: dict[str, float] = {}  # journey -> position of its last lost reply, as a share of its requests so far
+    for entry in traffic:
+        journey = entry.get("journey")
+        if not journey:
+            continue
+        seen[journey] = seen.get(journey, 0) + 1
+        if entry.get("fault") is not None:
+            depth[journey] = seen[journey]
+    for journey in depth:
+        depth[journey] /= seen[journey]
+    users = {journey: share for journey, share in depth.items() if journey != "setup"} or depth
+    return max(users, key=lambda journey: users[journey]) if users else None  # dicts keep order: earliest wins a tie
 
 
 def _step(entry: dict, start: int) -> dict:
     where = f"{entry['method']} {entry['path']}"
+    operation = GRAPHQL_OPERATION.search(entry.get("request") or "")
+    if operation and "graphql" in entry["path"]:
+        where += f" {operation.group(2)}"  # every GraphQL step is the same POST; the operation says what it did
     detail = {"request": entry.get("request", ""), "reply": entry.get("reply", "")}
     if entry.get("fault") is not None:
         text = f"{where}: the app did the work and answered {entry['upstream_status']}, but the reply was lost. The client got {entry['returned_status']}."

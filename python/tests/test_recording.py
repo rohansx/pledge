@@ -39,6 +39,24 @@ def test_a_whole_run_failure_replays_the_first_journey_a_fault_hit(tmp_path):
     assert rec["journey"] == "j-2" and "(expected 20, found 26)" in rec["steps"][-1]["text"]
 
 
+def test_a_whole_run_failure_skips_setup_and_prefers_the_lost_reply_furthest_into_a_journey(tmp_path):
+    traffic = [
+        entry(1, "setup", "/login", returned=504, fault=0),
+        entry(2, "j-1", "/lookup", returned=504, fault=0), entry(3, "j-1", "/lookup"), entry(4, "j-1", "/order"), entry(5, "j-1", "/capture"),
+        entry(6, "j-3", "/lookup"), entry(7, "j-3", "/order"), entry(8, "j-3", "/capture", returned=504, fault=1), entry(9, "j-3", "/capture"),
+    ]
+    rec = recording(run_dir(tmp_path, {"id": "charges", "status": "fail"}, traffic), "charges", "x")
+
+    assert rec["journey"] == "j-3" and rec["faults_hit"] == 1
+
+
+def test_a_graphql_step_names_its_operation(tmp_path):
+    step = entry(1, "j-1", "/graphql/", returned=504, fault=0) | {"request": '{"query":"mutation($id: ID!) { transactionRequestAction(id: $id) { x } }"}'}
+    rec = recording(run_dir(tmp_path, {"id": "a", "status": "fail"}, [step]), "a", "x")
+
+    assert rec["steps"][0]["text"].startswith("POST /graphql/ transactionRequestAction: the app did the work")
+
+
 def test_no_recording_without_a_failure_or_without_journey_keys(tmp_path):
     passed = run_dir(tmp_path, {"id": "a", "status": "pass"}, TRAFFIC)
     assert recording(passed, "a", "x") is None
