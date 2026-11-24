@@ -238,3 +238,21 @@ def author_phase(discovered: dict, recipe: str) -> Phase:
         budget=Budget(tokens=8_000_000, seconds=1500, commands=120),
         effort="high",
     )
+
+
+def pr_phase(task: str) -> Phase:
+    """Proposes scenarios and pledges for what one pull request changes. `task` is `pledge.pr.author_task`.
+
+    Not run by anything yet: the worker scans the scenarios a diff touches and stops there. The check is the
+    author phase's, which already refuses any pledge whose status is not `proposed`, so nothing this phase
+    writes can fail a pull request. A budget well under authoring's: a diff is small next to a repository.
+    """
+    return Phase(
+        name="pr",
+        system=prompts.pr_system(),
+        task=task,
+        finish_tool=prompts.PR_FINISH,
+        verify=lambda sandbox: _check(sandbox, f"author app {RUNS}/pr"),
+        budget=Budget(tokens=2_000_000, seconds=900, commands=60),
+        effort="high",
+    )

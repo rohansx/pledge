@@ -58,6 +58,7 @@ def _authoring(app_dir: Path) -> dict | None:
         ],
         "summary": str(final.get("summary", ""))[:6000],
         "open_questions": [str(question)[:1000] for question in final.get("open_questions", [])][:20],
+        "snapshot_id": report.get("snapshot_id"),  # the API keeps it on the repo, for pull request scans
     }
 
 
@@ -131,7 +132,8 @@ class LiveRun:
     def __init__(self, repo: str, trigger: str = "manual", phase: str = "run", scenario: str | None = None, seeds: int | None = None) -> None:
         self.api = os.environ.get("PLEDGE_API_URL", DEFAULT_API).rstrip("/")
         self._token = _token()
-        run = self._call("POST", f"/api/repos/{urllib.request.quote(repo, safe='')}/runs", {"trigger": trigger, "phase": phase, "scenario": scenario, "seeds": seeds})
+        # The slash of owner/name goes as a slash: a reverse proxy may refuse or rewrite an encoded one.
+        run = self._call("POST", f"/api/repos/{urllib.request.quote(repo, safe='/')}/runs",{"trigger": trigger, "phase": phase, "scenario": scenario, "seeds": seeds})
         self.id, self.repo_id = run["id"], run["repoId"]
         self.url = f"{self.api}/r/{self.repo_id}/runs/{self.id}"
 

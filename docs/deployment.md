@@ -10,6 +10,7 @@ on the server. Nothing is deployed to Vercel.
 | Piece | Where | Notes |
 |---|---|---|
 | API | Dokploy project `pledge`, application `api` | `ghcr.io/rohansx/pledge-api`, the FastAPI app in `python/pledge/api` under uvicorn, port 8080, serves `/api/*` |
+| Pull request worker | Not deployed yet. Opt-in: Dokploy application `worker` | The API's image with the command `pledge worker`. Outside the pipeline until its secrets exist; see [the GitHub App](./github-app.md) |
 | Dashboard | Dokploy project `pledge`, application `web` | `ghcr.io/rohansx/pledge-web`, nginx serving the React build, port 80, serves `/` and falls back to `index.html` for its routes |
 | Landing page | Dokploy project `pledge`, application `site` | `ghcr.io/rohansx/pledge-site`, nginx serving the Astro build, on `pledge.sh`; `www.pledge.sh` redirects to it |
 | Postgres | Dokploy project `shared-infra`, the shared cluster | Database `pledge`, owned by role `pledge`. One database per project; Pledge runs no Postgres of its own |

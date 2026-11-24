@@ -17,7 +17,8 @@ scan = ["e2b>=2.64,<3"]
 # The Anthropic SDK is only needed outside the sandbox, by `pledge author`.
 agent = ["anthropic>=2.12,<3"]
 # The control-plane API: `uvicorn pledge.api.app:app`.
-api = ["fastapi>=0.115,<1", "uvicorn>=0.32,<1", "psycopg[binary,pool]>=3.2,<4"]
+# PyJWT signs the GitHub App's token (RS256), which the standard library cannot; only `pledge worker` does that.
+api = ["fastapi>=0.115,<1", "uvicorn>=0.32,<1", "psycopg[binary,pool]>=3.2,<4", "PyJWT[crypto]>=2.8,<3"]
 dev = ["pytest>=8,<10", "httpx>=0.27,<1"]
 
 [project.scripts]

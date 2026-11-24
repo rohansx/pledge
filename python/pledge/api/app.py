@@ -20,9 +20,12 @@ from fastapi import APIRouter, Depends, FastAPI, HTTPException, Query, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, Response, StreamingResponse
 
+from pydantic import ValidationError
+
 from pledge.api import logic
-from pledge.api.models import EventIn, FindingPatch, PledgePatch, RunResultIn, RunStartIn
+from pledge.api.models import EventIn, FindingPatch, InstallationEvent, PledgePatch, PullRequestEvent, RunResultIn, RunStartIn
 from pledge.api.store import Store
+from pledge.github import verify_signature
 
 log = logging.getLogger("pledge.api")
 MAX_BODY_BYTES = 2 * 1024 * 1024
@@ -58,7 +61,7 @@ def token_auth(token: str | None) -> Callable[[Request], dict]:
     return current_user
 
 
-def create_app(store: Store, token: str | None, version: str = "dev", public_url: str = "") -> FastAPI:
+def create_app(store: Store, token: str | None, version: str = "dev", public_url: str = "", webhook_secret: str | None = None) -> FastAPI:
     app = FastAPI(title="Pledge", docs_url=None, redoc_url=None, openapi_url=None)
     auth = token_auth(token)
     api = APIRouter(prefix="/api", dependencies=[Depends(auth)])
@@ -102,6 +105,35 @@ def create_app(store: Store, token: str | None, version: str = "dev", public_url
             log.exception("healthz: database check failed")
             return fail(503, "database unreachable")
         return ok({"version": version, "db": "ok"})
+
+    @app.post("/api/github/webhook")
+    async def github_webhook(request: Request) -> Response:
+        """The one write path with no bearer token: GitHub cannot carry one. The signature over the exact bytes
+        is the sign-in, and it is checked before anything in the body is parsed. The body is never logged."""
+        if not webhook_secret:
+            return fail(503, "the GitHub App is not configured")
+        body = b""
+        async for chunk in request.stream():  # counted as it arrives: a body may come without a content-length
+            body += chunk
+            if len(body) > MAX_BODY_BYTES:
+                return fail(413, "body too large")
+        if not verify_signature(webhook_secret, body, request.headers.get("x-hub-signature-256")):
+            return fail(401, "a valid signature is required")
+        model = {"pull_request": PullRequestEvent, "installation": InstallationEvent, "installation_repositories": InstallationEvent}.get(request.headers.get("x-github-event", ""))
+        if model is None:
+            return Response(status_code=204)
+        try:
+            event = model.model_validate_json(body)
+        except ValidationError:
+            return fail(422, "invalid request: not a delivery this endpoint understands")
+        handle = logic.github_pull_request if model is PullRequestEvent else logic.github_installation
+        handled = await anyio.to_thread.run_sync(handle, store, event)
+        return Response(status_code=204) if handled is None else ok(handled, 202)
+
+    @api.get("/repos/{repo_id}/jobs")
+    def jobs(repo_id: str) -> JSONResponse:
+        """Pull request scans: waiting, running and finished."""
+        return ok(logic.job_list(store, repo_id))
 
     @api.get("/me")
     def me(user: dict = Depends(auth)) -> JSONResponse:
@@ -156,7 +188,7 @@ def create_app(store: Store, token: str | None, version: str = "dev", public_url
         catalogue = logic._pledges(store, repo_id)
         return ok([logic.run_row(run, catalogue) for run in store.list("run", repo_id)])
 
-    @api.post("/repos/{repo_name}/runs")
+    @api.post("/repos/{repo_name:path}/runs")  # a path: a GitHub repo is published as owner/name
     def start_run(repo_name: str, start: RunStartIn) -> JSONResponse:
         """Registers a run the command line is making. Starting one from here needs the orchestrator."""
         return ok(logic.run_row(logic.start_run(store, repo_name, start), {}), 201)
@@ -249,7 +281,8 @@ def _from_environment() -> FastAPI:
         store.migrate()
     except Exception:  # noqa: BLE001 - keep serving so the health check reports it instead of the container flapping
         log.exception("schema setup failed")
-    return create_app(store, token, os.environ.get("PLEDGE_VERSION", "dev"), os.environ.get("PLEDGE_PUBLIC_URL", "https://app.pledge.sh"))
+    # Without the secret the webhook answers 503 and everything else works as before: the GitHub App is opt-in.
+    return create_app(store, token, os.environ.get("PLEDGE_VERSION", "dev"), os.environ.get("PLEDGE_PUBLIC_URL", "https://app.pledge.sh"), os.environ.get("GITHUB_WEBHOOK_SECRET") or None)
 
 
 def __getattr__(name: str) -> FastAPI:

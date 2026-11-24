@@ -109,6 +109,8 @@ class AuthoringIn(Strict):
     phases: list[PhaseIn] = Field(max_length=8)
     summary: str = Field(max_length=6000)
     open_questions: list[str] = Field(max_length=20)
+    # The booted sandbox saved after authoring. Kept on the repo so a pull request scan can start from it.
+    snapshot_id: str | None = Field(default=None, max_length=120, pattern=r"^[A-Za-z0-9][A-Za-z0-9_.:/-]*$")
 
 
 class RunResultIn(Strict):
@@ -148,3 +150,49 @@ class PledgePatch(Strict):
     action: Literal["approve", "reject", "retire"]
     override: bool = False  # required to approve a pledge that no planted bug has proven
     note: str = Field(default="", max_length=1000)
+
+
+# ---------------------------------------------------------------- GitHub webhooks
+# A delivery carries hundreds of fields. These models keep only the ones Pledge stores, each one bounded, and
+# drop the rest: what is not read cannot be stored.
+
+
+class Loose(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+
+class GitHubRepo(Loose):
+    id: int = Field(ge=1)
+    full_name: str = Field(pattern=r"^[A-Za-z0-9_.-]{1,100}/[A-Za-z0-9_.-]{1,100}$")
+
+
+class GitHubId(Loose):
+    id: int = Field(ge=1)
+
+
+class GitHubCommit(Loose):
+    sha: str = Field(pattern=r"^[0-9a-f]{40}$|^[0-9a-f]{64}$")
+    repo: GitHubId | None = None  # null once a fork has been deleted
+
+
+class GitHubPull(Loose):
+    number: int = Field(ge=1)
+    head: GitHubCommit
+    base: GitHubCommit
+
+
+class PullRequestEvent(Loose):
+    action: str = Field(max_length=40)
+    pull_request: GitHubPull
+    repository: GitHubRepo
+    installation: GitHubId
+
+
+class InstallationEvent(Loose):
+    """`installation` and `installation_repositories`: which repositories the app can or can no longer reach."""
+
+    action: str = Field(max_length=40)
+    installation: GitHubId
+    repositories: list[GitHubRepo] = []
+    repositories_added: list[GitHubRepo] = []
+    repositories_removed: list[GitHubRepo] = []
