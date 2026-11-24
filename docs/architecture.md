@@ -71,8 +71,8 @@ open-source CLI. The rest is new.
 | Component | Job | Technology | Status |
 |---|---|---|---|
 | GitHub App | Repo access with short-lived tokens, pull request comments | GitHub App | New |
-| API | Accounts, scans, run history, report links | Node + TypeScript HTTP service, database on the shared Postgres | Stores and serves published scans |
-| Dashboard | The founder's view of scans, reports and pledge approval | Vite + TypeScript single-page app, calling the API | Shows published scans; approval not built |
+| API | Repos, runs, pledges, findings and the live run stream | FastAPI (Python), database on the shared Postgres | Built: token sign-in, no orchestrator or GitHub App yet |
+| Dashboard | The founder's view of scans, findings and pledge review | React, TanStack Router and Query, Tailwind, built with Vite | Built to the [dashboard design](./dashboard-design.md), except Coverage |
 | Orchestrator | Queues scans, creates and forks sandboxes, enforces budgets and timeouts | Python job queue and workers | New |
 | Agent runner | Runs the Claude loop and exposes tools that act on one sandbox | Python, Anthropic API with tool use | New |
 | Sandbox | One isolated machine per scan | E2B (Firecracker microVM); Docker inside it works ([spikes](./spikes/phase-0.md)) | Exists as a target option |

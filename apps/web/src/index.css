@@ -1,0 +1,96 @@
+@import "tailwindcss";
+
+/* The dashboard shares the landing page's material: warm paper, ink, one seal red, hairlines, 3px corners,
+   Geist for prose and Geist Mono for anything a machine produced. The values are copied from apps/site and
+   exposed to Tailwind below, so utilities such as bg-paper and text-mute follow the theme. */
+
+:root {
+  --bg: #F6F5F1; --bg-2: #ECEAE4; --card: #FFFFFF;
+  --fg: #141311; --fg-2: #5E5854; --mute: #8A8380; --line: #DCD8D1;
+  --glass: rgba(255,255,255,.5); --glass-hi: rgba(255,255,255,.8);
+  --tex-hi: #4A4440; --tex-lo: #141311;
+  --dark-line: #2E2A27; --dark-fg: #EEEAE4; --dark-mute: #8E8781;
+  --seal: #C8361D; --kept: #3F8A57; --amber: #A8661F; --idle: #CFCAC2;
+  --seal-wash: rgba(200,54,29,.07); --kept-wash: rgba(63,138,87,.09); --amber-wash: rgba(168,102,31,.1);
+  --grain-op: .05;
+  --noise: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.6'/%3E%3C/svg%3E");
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0D0C0B; --bg-2: #151412; --card: #181615;
+    --fg: #EEEAE4; --fg-2: #A39C96; --mute: #77706B; --line: #2A2724;
+    --glass: rgba(34,31,29,.45); --glass-hi: rgba(255,255,255,.06);
+    --tex-hi: #3A3532; --tex-lo: #0E0D0C; --dark-line: #2A2724;
+    --seal: #E2482B; --kept: #5BAF78; --amber: #E8A15A; --idle: #3A3633;
+    --seal-wash: rgba(226,72,43,.1); --kept-wash: rgba(91,175,120,.1); --amber-wash: rgba(232,161,90,.1);
+    --grain-op: .07; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0D0C0B; --bg-2: #151412; --card: #181615;
+  --fg: #EEEAE4; --fg-2: #A39C96; --mute: #77706B; --line: #2A2724;
+  --glass: rgba(34,31,29,.45); --glass-hi: rgba(255,255,255,.06);
+  --tex-hi: #3A3532; --tex-lo: #0E0D0C; --dark-line: #2A2724;
+  --seal: #E2482B; --kept: #5BAF78; --amber: #E8A15A; --idle: #3A3633;
+  --seal-wash: rgba(226,72,43,.1); --kept-wash: rgba(91,175,120,.1); --amber-wash: rgba(232,161,90,.1);
+  --grain-op: .07; color-scheme: dark;
+}
+
+@theme inline {
+  --color-paper: var(--bg);
+  --color-paper-2: var(--bg-2);
+  --color-card: var(--card);
+  --color-ink: var(--fg);
+  --color-ink-2: var(--fg-2);
+  --color-mute: var(--mute);
+  --color-line: var(--line);
+  --color-glass: var(--glass);
+  --color-seal: var(--seal);
+  --color-kept: var(--kept);
+  --color-amber: var(--amber);
+  --color-idle: var(--idle);
+  --color-seal-wash: var(--seal-wash);
+  --color-kept-wash: var(--kept-wash);
+  --color-amber-wash: var(--amber-wash);
+  --font-sans: "Geist", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "Geist Mono", ui-monospace, monospace;
+  --radius-xs: 2px;
+  --radius-sm: 3px;
+  --radius-md: 4px;
+}
+
+@layer base {
+  body { background: var(--bg); color: var(--fg); font: 15px/1.5 var(--font-sans); -webkit-font-smoothing: antialiased; min-height: 100vh; }
+  /* paper grain over the whole page, as on the landing page */
+  body::after { content: ""; position: fixed; inset: 0; z-index: 100; pointer-events: none; background-image: var(--noise); opacity: var(--grain-op); mix-blend-mode: multiply; }
+  :root[data-theme="dark"] body::after { mix-blend-mode: screen; }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) body::after { mix-blend-mode: screen; } }
+  :focus-visible { outline: 2px solid var(--seal); outline-offset: 2px; }
+  button, a, select, summary { cursor: pointer; }
+  button:disabled { cursor: not-allowed; opacity: .5; }
+}
+
+@layer components {
+  /* the landing page's grainy dark surface and its crop marks */
+  .texture { position: relative; isolation: isolate; color: var(--dark-fg); border: 1px solid var(--dark-line); background: radial-gradient(ellipse at 70% 0%, var(--tex-hi), var(--tex-lo) 72%); }
+  .texture::after { content: ""; position: absolute; inset: 0; z-index: -1; pointer-events: none; background-image: var(--noise); opacity: .32; border-radius: inherit; }
+  .ticks { position: relative; }
+  .ticks::before { content: ""; position: absolute; inset: -5px; pointer-events: none; opacity: .5; background:
+    linear-gradient(var(--fg),var(--fg)) 0 0/9px 1px no-repeat, linear-gradient(var(--fg),var(--fg)) 0 0/1px 9px no-repeat,
+    linear-gradient(var(--fg),var(--fg)) 100% 0/9px 1px no-repeat, linear-gradient(var(--fg),var(--fg)) 100% 0/1px 9px no-repeat,
+    linear-gradient(var(--fg),var(--fg)) 0 100%/9px 1px no-repeat, linear-gradient(var(--fg),var(--fg)) 0 100%/1px 9px no-repeat,
+    linear-gradient(var(--fg),var(--fg)) 100% 100%/9px 1px no-repeat, linear-gradient(var(--fg),var(--fg)) 100% 100%/1px 9px no-repeat; }
+  .logo-mark { flex: none; overflow: visible; transition: transform .9s cubic-bezier(.65,0,.35,1); }
+  a:hover > .logo-mark { transform: rotate(60deg); } /* one arm's step, as on the landing page */
+  .theme-moon { display: none; }
+  :root[data-theme="dark"] .theme-sun { display: none; }
+  :root[data-theme="dark"] .theme-moon { display: inline; }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) .theme-sun { display: none; }
+    :root:not([data-theme="light"]) .theme-moon { display: inline; }
+  }
+  .live-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--seal); animation: live 1.4s ease-in-out infinite; }
+  @keyframes live { 50% { opacity: .25; } }
+  @media (prefers-reduced-motion: reduce) { .live-dot, .logo-mark { animation: none; transition: none; } }
+}

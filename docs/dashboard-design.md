@@ -370,50 +370,51 @@ listed under a separate "For review" heading and do not fail the check.
 
 ## Status against what is built
 
-Added 24 November 2026. This section is a comparison, not part of the design. The dashboard
-at `app.pledge.sh` was built the day before this design was written.
+Updated 24 November 2026, after the dashboard and API were rebuilt to this design. This
+section is a comparison, not part of the design.
 
-### Where the two disagree
+### Followed
+
+| Topic | State |
+|---|---|
+| Stack | React with TypeScript, TanStack Router and Query, Tailwind, Recharts, built with Vite. The API is FastAPI. Live updates are Server-Sent Events |
+| Information architecture | The routes in section 4, as real paths. Top bar with the repo switcher, left rail with the six tabs, badges on Findings and Pledges |
+| API contract | The paths in section 6, computed server-side: one call per tab |
+| Run strip | On Overview, the repo picker, Findings, Runs and in the pull request comment, in the same words |
+| Rules | Only an approved pledge makes a run broken. Approving an unproven pledge needs an override, recorded with a note. A finding is verified only by a later run |
+
+### Different from the design
 
 | Topic | This design | What exists |
 |---|---|---|
-| UI | React, TanStack Router and Query, Tailwind, Recharts | TypeScript with no framework, hand-written CSS taken from the landing page, hash routes |
-| API | FastAPI, the control plane | A Node + TypeScript service with one table, in `apps/api` |
-| Sign-in | GitHub OAuth through the GitHub App, session cookie | One shared access token. Keycloak was chosen earlier and put on hold |
-| Unit of the dashboard | A connected repo, at `/r/:repoId/...` | An app name taken from published scans, at `#/a/<app>/...` |
-| Where derived data is computed | The API: one call per tab | The browser, from every stored scan fetched whole |
-| How data arrives | The control plane runs scans and streams events | The command line publishes a finished scan's summary |
+| Sign-in | GitHub OAuth through the GitHub App, session cookie | One shared access token, sent as a bearer header and kept in the browser. It sits behind one function in the API and one module in the dashboard, so GitHub sign-in replaces those two |
+| Repos | Connected through GitHub | Created when the command line first publishes a run under a name. No branch selector, no commits |
+| Starting a scan | `POST /repos/:id/runs` starts one | The same call registers a run the command line is making. The runner then posts events to `POST /runs/:id/events` and its result to `POST /runs/:id/result`, two routes the design does not list |
+| Hosting | Static files served by FastAPI or a CDN | A separate nginx container serves the dashboard; the proxy routes `/api` to FastAPI |
+| Replay | `pledge replay` | That command does not exist. The replay shown is `pledge run` with a breaking seed |
+| "Returned success" | Share of requests that returned success | Share that the scenario did not count as an unexpected failure. A reply replaced by an injected fault is the fault working, so it is not counted against the app |
 
 ### Tab by tab
 
 | Tab | Built | Missing |
 |---|---|---|
-| Overview | Verdict sentence, counters, per-seed squares for every pledge, recent scans | Run strip, trend over weeks, "run first scan", pull requests checked |
-| Findings | List and detail in one page: statement, seeds it broke on, expected against actual, the fault, a copyable replay command | Status lifecycle, timeline of how it happened, smallest fault plan, rerun, send to coding agent, a URL per finding |
-| Pledges | List with filter, detail page, history across scans, source and confidence | Approve, reject and retire; proof from planted bugs; link to the file and line |
-| Coverage | Nothing | All of it |
-| Runs | Scan list and detail: per-pledge results, fault plan, per-seed runs | Live view, trigger and commit, logs, report download, cost in money |
-| Settings | Sign out, theme, how to publish | Everything about a repo, budgets, notifications, team, data deletion |
+| Overview | Headline with broken pledges linked, run strip, the four impact counters, trend, latest runs and findings, states for no scan and a running scan | The trend needs runs in two different weeks before it draws. "Run first scan" is instructions, not a button |
+| Findings | List with status filter. Detail with statement, run strip, expected versus actual per seed, how often, the whole fault plan, replay command, status changes, history, a prompt to hand a coding agent | Timeline of how it happened, smallest cause, rerun from the dashboard |
+| Pledges | List with status filter and the design's columns. Detail with facts, latest check, history over 20 runs. Approve with override and note, reject, retire | Proof from planted bugs, file and line of a stated source, opening a pull request to edit |
+| Coverage | An honest empty state | All of it. `GET /repos/:id/coverage` answers `available: false` |
+| Runs | List with run strip per run. Detail with per-pledge results, fault plan, per-seed table, what Claude wrote and its cost in tokens, the pull request comment as it would be posted. Live view of the five phases over the event stream | Commit and pull request, cost in money, logs and report download |
+| Settings | Repo, how to send runs, account | Everything else in 5.6 |
 
-Not in this design but built: an Agent runs page showing what Claude wrote for a repo, its
-open questions and its token use per phase.
+### What the backend still cannot supply
 
-### What the backend cannot supply yet
-
-These screens need things the product does not have, whatever the dashboard is written in:
-
-- **Run strip.** Requests sent and the share that succeeded are in each run's engine
-  metrics but are not published. A small change.
-- **Live run.** Nothing runs scans server-side. The runner would have to push events to the
-  API as it works, or the orchestrator has to exist.
-- **Proof.** The prove phase (planted bugs) is Phase 3 and not started, so no pledge can be
-  `proven` and "planted bugs caught" is always zero.
-- **Smallest cause.** Shrinking a fault plan is Phase 3.
-- **Timeline.** The proxy records which faults it injected but not an ordered story per
-  journey, and the engine's events are per assertion.
-- **Coverage.** The boot phase lists a repo's endpoints, but nothing maps a scenario's
-  requests to routes.
-- **Repos, commits, pull requests.** There is no GitHub App, so nothing knows a commit or a
-  pull request.
-- **`pledge replay`.** The command does not exist; the replay shown today is `pledge run`
-  with a seed.
+- **Proof.** The prove phase is not built, so no pledge is `proven` and every approval is an
+  override.
+- **Smallest cause and timeline.** Nothing shrinks a fault plan, and the proxy does not
+  record an ordered story per journey. The API returns empty lists for both, never a guess.
+- **Coverage.** Nothing maps a scenario's requests onto a repo's routes.
+- **Repos, commits, pull requests.** There is no GitHub App.
+- **Server-side scans and reruns.** There is no orchestrator. `POST /findings/:id/rerun`
+  answers 501.
+- **First scans span several runs.** A run has one scenario, so authoring that writes three
+  scenarios finishes the live run with the first baseline and sends the others as runs of
+  their own.

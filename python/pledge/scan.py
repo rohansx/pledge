@@ -12,7 +12,8 @@ import json
 import os
 import tarfile
 import time
-from concurrent.futures import ThreadPoolExecutor
+from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 from pledge.template import TEMPLATE
@@ -95,7 +96,7 @@ def authored_snapshot(app_dir: Path) -> str | None:
         return None
 
 
-def scan(app_dir: Path, scenario: str, faults_file: Path | None, seeds: int, env: dict[str, str], runs_dir: Path, snapshot: str | None = None) -> dict:
+def scan(app_dir: Path, scenario: str, faults_file: Path | None, seeds: int, env: dict[str, str], runs_dir: Path, snapshot: str | None = None, on_seed: Callable[[Path], None] | None = None) -> dict:
     """With `snapshot`, start from that saved, already-booted sandbox instead of uploading and booting the app."""
     from e2b import Sandbox
 
@@ -146,7 +147,13 @@ def scan(app_dir: Path, scenario: str, faults_file: Path | None, seeds: int, env
             raise RuntimeError(f"{len(failed)} of {seeds} forks failed to start: {failed[0]!r}")
         lap(f"fork x{seeds}")
         with ThreadPoolExecutor(max_workers=seeds) as pool:
-            runs = list(pool.map(lambda pair: _one_run(pair[1], scenario, faults, pair[0], runs_dir), enumerate(forks, start=1)))
+            pending = [pool.submit(_one_run, fork, scenario, faults, seed, runs_dir) for seed, fork in enumerate(forks, start=1)]
+            runs = []
+            for future in as_completed(pending):
+                runs.append(future.result())
+                if on_seed:
+                    on_seed(Path(runs[-1]["run_dir"]))  # progress for the live view, as each fork finishes
+            runs.sort(key=lambda run: run["seed"])
         lap("runs (parallel)")
     finally:
         for box in [sandbox, *forks]:

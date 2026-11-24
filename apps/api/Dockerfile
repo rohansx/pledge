@@ -1,15 +1,13 @@
+# The control-plane API. It is the Python package in python/, served by uvicorn.
 # Build context: the repository root.
-FROM node:24-alpine
-WORKDIR /repo
-RUN corepack enable
-COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
-COPY apps/api/package.json apps/api/
-RUN pnpm install --frozen-lockfile --prod --filter @pledge/api
-COPY apps/api/src apps/api/src
+FROM python:3.12-slim
+WORKDIR /srv
+COPY python/pyproject.toml ./
+COPY python/pledge ./pledge
+RUN pip install --no-cache-dir '.[api]'
 ARG PLEDGE_VERSION=dev
-ENV PLEDGE_VERSION=$PLEDGE_VERSION NODE_ENV=production PORT=8080
+ENV PLEDGE_VERSION=$PLEDGE_VERSION PORT=8080 PYTHONUNBUFFERED=1
 EXPOSE 8080
-USER node
-WORKDIR /repo/apps/api
-# Node 24 runs TypeScript directly, so there is no build step.
-CMD ["node", "src/server.ts"]
+USER nobody
+# One worker: live run streams poll the database, and a second worker would only add connections.
+CMD ["sh", "-c", "exec uvicorn pledge.api.app:app --host 0.0.0.0 --port ${PORT} --proxy-headers --forwarded-allow-ips='*'"]

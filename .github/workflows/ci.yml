@@ -32,6 +32,17 @@ jobs:
 
   python:
     runs-on: ubuntu-latest
+    services:
+      # A disposable database, so the Postgres store is tested against the real thing.
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      TEST_DATABASE_URL: postgres://postgres:test@localhost:5432/postgres
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -41,7 +52,7 @@ jobs:
           cache-dependency-path: python/pyproject.toml
       # k6 lets the end-to-end shop loop run here instead of being skipped. The engine accepts only this version.
       - run: curl -fsSL https://github.com/grafana/k6/releases/download/v2.2.0/k6-v2.2.0-linux-amd64.tar.gz | sudo tar -xz -C /usr/local/bin --strip-components=1 k6-v2.2.0-linux-amd64/k6
-      - run: pip install -e 'python[engine,scan,agent,dev]'
+      - run: pip install -e 'python[engine,scan,agent,api,dev]'
       - run: python -m pytest python
 
   images:

@@ -39,7 +39,8 @@ def _download(sandbox, remote_dir: str, local_dir: Path) -> None:
         archive.extractall(local_dir, filter="data")  # the sandbox ran untrusted code; refuse paths that escape
 
 
-def author(app_dir: Path, out_dir: Path) -> dict:
+def author(app_dir: Path, out_dir: Path, live=None) -> dict:
+    """`live`, a `pledge.publish.LiveRun`, receives each phase and step as it happens."""
     import anthropic
     from e2b import Sandbox
 
@@ -52,6 +53,9 @@ def author(app_dir: Path, out_dir: Path) -> dict:
 
     def log(message: str) -> None:
         print(f"[{time.strftime('%H:%M:%S')}] {message}", file=sys.stderr, flush=True)
+        phase, _, step = message.partition(": ")
+        if live and phase in ("boot", "author") and step:
+            live.event("phase_step", phase=phase, label=step[:160], ok="not accepted" not in step)
 
     started = time.monotonic()
     # The E2B Hobby plan stops a sandbox after one hour.
@@ -70,12 +74,19 @@ def author(app_dir: Path, out_dir: Path) -> dict:
         log("boot accepted; outbound closed")
 
         recipe = sandbox.files.read(f"{APP}/pledge.boot.json", user="root")
+        if live:
+            live.phase("author")
         authored = agent.run_phase(client, sandbox, agent.author_phase(boot.result, recipe), log)
         phases.append(authored)
         log("author accepted")
 
         _download(sandbox, APP, out_dir)
         _download(sandbox, RUNS, out_dir / ".pledge-runs")
+        if live:
+            from pledge.verdict import load_pledges
+
+            for pledge in load_pledges(out_dir):
+                live.event("pledge_proposed", id=pledge["id"], statement=pledge["statement"][:300], source=pledge["source"])
         # Boot once, fork many: the booted app, with everything the agent installed, is saved so that scans
         # start from it instead of installing again (and so that they can run with outbound closed).
         snapshot_id = sandbox.create_snapshot(mode="full").snapshot_id

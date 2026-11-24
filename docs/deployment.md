@@ -9,8 +9,8 @@ on the server. Nothing is deployed to Vercel.
 
 | Piece | Where | Notes |
 |---|---|---|
-| API | Dokploy project `pledge`, application `api` | `ghcr.io/rohansx/pledge-api`, port 8080, serves `/api/*` |
-| Dashboard | Dokploy project `pledge`, application `web` | `ghcr.io/rohansx/pledge-web`, nginx serving the Vite build, port 80, serves `/` |
+| API | Dokploy project `pledge`, application `api` | `ghcr.io/rohansx/pledge-api`, the FastAPI app in `python/pledge/api` under uvicorn, port 8080, serves `/api/*` |
+| Dashboard | Dokploy project `pledge`, application `web` | `ghcr.io/rohansx/pledge-web`, nginx serving the React build, port 80, serves `/` and falls back to `index.html` for its routes |
 | Landing page | Dokploy project `pledge`, application `site` | `ghcr.io/rohansx/pledge-site`, nginx serving the Astro build, on `pledge.sh`; `www.pledge.sh` redirects to it |
 | Postgres | Dokploy project `shared-infra`, the shared cluster | Database `pledge`, owned by role `pledge`. One database per project; Pledge runs no Postgres of its own |
 | Auth | Dokploy project `shared-infra`, Keycloak | **On hold.** Not wired to Pledge yet; see below |
@@ -59,7 +59,7 @@ yet. When it is picked up:
 - The API verifies Keycloak-issued tokens on every request except `/api/healthz`.
 - The deploy smoke test gains one check that an unauthenticated API call is refused.
 
-Until then one shared access token stands in for sign-in. Every `/api/scans` request must
+Until then one shared access token stands in for sign-in. Every API request except the health check must
 carry it as a bearer token; the dashboard asks for it once and keeps it in the browser's
 local storage, and `pledge scan --publish` reads it from `PLEDGE_API_TOKEN`. Without the
 token configured on the API, the scan routes answer 503 rather than opening up. `/api/healthz`
@@ -73,7 +73,7 @@ expiry, and no way to revoke it except by changing it in Dokploy and redeploying
 - The Dokploy API is called over plain HTTP from the GitHub runner, as the other projects on
   this server do. The key is a repository secret, but it crosses the network unencrypted.
 - GitHub Actions are referenced by version tag, not pinned to commit SHAs.
-- The API creates its one table at startup with an idempotent statement. That holds while
+- The API creates its two tables at startup with an idempotent statement. Every object is a JSON document in one of them. That holds while
   schema changes are additive; the first change that alters a column needs real migrations
   run in the pipeline before the deploy step.
 - There is one environment. Every push to `main` goes to production.
@@ -82,9 +82,10 @@ expiry, and no way to revoke it except by changing it in Dokploy and redeploying
 
 ```sh
 pnpm install
-DATABASE_URL=postgres://... pnpm --filter @pledge/api dev   # API on :8080
+DATABASE_URL=postgres://... PLEDGE_API_TOKEN=dev uvicorn pledge.api.app:app --port 8080   # API, from python/
 pnpm --filter @pledge/web dev                               # dashboard on :5173, proxies /api to :8080
 PLEDGE_API_URL=https://app.pledge.sh pnpm --filter @pledge/web dev   # same, against the deployed API
 pnpm --filter @pledge/site dev                              # landing page on :4321
-pnpm typecheck && pnpm test
+pnpm typecheck && pnpm test                                 # dashboard and landing page
+python -m pytest python                                     # API, runner and the end-to-end loop
 ```

@@ -16,7 +16,9 @@ engine = ["litetraffic @ git+https://github.com/rohansx/litetraffic@0c8cf17a5da1
 scan = ["e2b>=2.64,<3"]
 # The Anthropic SDK is only needed outside the sandbox, by `pledge author`.
 agent = ["anthropic>=2.12,<3"]
-dev = ["pytest>=8,<10"]
+# The control-plane API: `uvicorn pledge.api.app:app`.
+api = ["fastapi>=0.115,<1", "uvicorn>=0.32,<1", "psycopg[binary,pool]>=3.2,<4"]
+dev = ["pytest>=8,<10", "httpx>=0.27,<1"]
 
 [project.scripts]
 pledge = "pledge.cli:main"

@@ -27,15 +27,16 @@ Built ahead of the phases so that every later change ships the same way. A skele
 with images built on GitHub runners and a smoke test against the live URL. See
 [deployment](./deployment.md).
 
-## Pulled forward from Phase 4: the dashboard
+## Pulled forward from Phase 4: the dashboard and the control-plane API
 
-Built on 23 November 2026, ahead of its phase. The API stores published scans in Postgres
-and the dashboard at `app.pledge.sh` shows them: the list of scans, and for each one the
-pledges with a square per seed, expected against actual for every seed, the fault plan, the
-runs, and what Claude wrote and what it cost when it authored the scan. `pledge scan
---publish` and `pledge publish` send a scan there. It sits behind one shared access token
-until Keycloak sign-in is wired. Not built: approving a pledge from the dashboard, accounts,
-the GitHub App and the orchestrator.
+Built on 23 and 24 November 2026, ahead of their phase, and rebuilt on the second day to
+the [dashboard design](./dashboard-design.md): a FastAPI API that owns repos, runs, pledges
+and findings, and a React dashboard with the design's tabs. The command line registers a
+run, streams its progress and sends its result, so a scan shows live. Pledges are approved,
+rejected and retired in the dashboard, and only an approved pledge makes a run broken.
+Findings are opened, reopened and verified by runs. Sign-in is one shared token until the
+GitHub App exists. Not built: Coverage, starting a scan from the dashboard, the GitHub App
+and pull request checks, proof from planted bugs, timelines and the smallest fault plan.
 
 ## Phase 0: Spikes (done)
 

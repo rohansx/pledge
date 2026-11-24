@@ -76,7 +76,33 @@ def _parser() -> argparse.ArgumentParser:
     author.add_argument("app_dir", type=Path)
     author.add_argument("--out", type=Path, required=True, help="empty directory for the repo plus the authored files")
     author.add_argument("--json", action="store_true")
+    author.add_argument("--publish", action="store_true", help="show the run live in the dashboard and send its baseline results")
+    author.add_argument("--app", help="repo name shown in the dashboard (default: the app directory's name)")
     return parser
+
+
+def _live(args: argparse.Namespace, trigger: str, phase: str, scenario: str | None = None, seeds: int | None = None):
+    from pledge.publish import LiveRun
+
+    live = LiveRun(args.app or args.app_dir.resolve().name, trigger, phase, scenario, seeds)
+    print(f"live: {live.url}", file=sys.stderr)
+    return live
+
+
+def _publish_baselines(args: argparse.Namespace, report: dict, live) -> None:
+    """After authoring: each scenario's baseline is a run. The first finishes the live run; a run has one
+    scenario, so the others are sent as runs of their own."""
+    from pledge.publish import LiveRun, build_record
+
+    out = args.out.resolve()
+    for index, baseline in enumerate(report["baseline"]):
+        run_dir = out / ".pledge-runs" / "baseline" / baseline["run_id"]
+        record = build_record(out, verdict(out, [run_dir]), [run_dir], None, {})
+        target = live if index == 0 else LiveRun(live.repo_id, "first_scan", "run", baseline["scenario"], 1)
+        target.finish(record)
+        print(f"published: {target.url}", file=sys.stderr)
+    if not report["baseline"]:
+        live.failed("authoring produced no baseline run")
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -95,27 +121,41 @@ def main(argv: list[str] | None = None) -> int:
             from pledge.agent import AgentError  # imported here: only this command needs the Anthropic SDK
             from pledge.author import author, format_report
 
+            live = _live(args, "first_scan", "boot") if args.publish else None
             try:
-                report = author(args.app_dir, args.out)
-            except AgentError as exc:
+                report = author(args.app_dir, args.out, live)
+            except (AgentError, RuntimeError, OSError) as exc:
+                if live:
+                    live.failed(str(exc))
                 print(f"pledge: {exc}", file=sys.stderr)
                 return 3
             print(json.dumps(report) if args.json else "\n".join(format_report(report)))
+            if live:
+                _publish_baselines(args, report, live)
             return 0
         if args.command == "scan":
             from pledge.scan import authored_snapshot, scan  # imported here: only this command needs the E2B SDK
 
+            from pledge.publish import seed_counts
+
             snapshot = args.snapshot or authored_snapshot(args.app_dir.resolve())
-            report = scan(args.app_dir, args.scenario, args.faults, args.seeds, _env(args.env), args.runs_dir, snapshot)
+            live = _live(args, "manual", "run", args.scenario, args.seeds) if args.publish else None
+            try:
+                report = scan(args.app_dir, args.scenario, args.faults, args.seeds, _env(args.env), args.runs_dir, snapshot, (lambda run_dir: live.event("seed_finished", **seed_counts(run_dir))) if live else None)
+            except (ValueError, RuntimeError, OSError) as exc:
+                if live:
+                    live.failed(str(exc))
+                raise
         else:
             report = verdict(args.app_dir, args.runs)
+            live = _live(args, "manual", "run", report["scenario"], len(args.runs)) if args.command == "publish" else None
         print(json.dumps(report) if getattr(args, "json", False) else "\n".join(format_verdict(report)))
-        if args.command == "publish" or getattr(args, "publish", False):
-            from pledge.publish import build_record, publish
+        if live:
+            from pledge.publish import build_record
 
             run_dirs = [Path(path) for path in report.get("run_dirs", [])] or args.runs
-            stored = publish(build_record(args.app_dir, report, run_dirs, args.faults, _env(args.env), args.app))
-            print(f"published: {stored['url']}", file=sys.stderr)
+            live.finish(build_record(args.app_dir, report, run_dirs, args.faults, _env(args.env)))
+            print(f"published: {live.url}", file=sys.stderr)
         return {"kept": 0, "broken": 1}.get(report["verdict"], 2)
     except (local.BootError, PledgeError, ValueError, OSError, RuntimeError) as exc:
         print(f"pledge: {exc}", file=sys.stderr)
