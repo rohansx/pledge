@@ -29,6 +29,7 @@ fail. Deterministic checks on the app's data decide the verdict. A model never d
 | [Phase 0 spike results](./docs/spikes/phase-0.md) | What was measured on E2B: Compose, fork speed, closed network, SDK redirection |
 | [Phase 1 result](./docs/phase-1.md) | The loop by hand: a double charge found under a lost-reply fault, in E2B |
 | [Phase 2 result](./docs/phase-2.md) | Claude boots the demo shop unaided and writes its scenario and pledges |
+| [Dashboard design](./docs/dashboard-design.md) | The proposed dashboard: tabs, API contract, build order, and how it compares with what is built |
 | [Open questions](./docs/open-questions.md) | Unverified assumptions that could change the design |
 
 ## The four design choices
