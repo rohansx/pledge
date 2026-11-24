@@ -1,5 +1,5 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
-  <style>.d{fill:#141311}.s{fill:#C8361D}@media (prefers-color-scheme:dark){.d{fill:#EEEAE4}.s{fill:#E2482B}}</style>
-  <path class="d" fill-rule="evenodd" d="M3 2h12l6 6v4l-6 6H9v4H3zM9 7h4l2 2v2l-2 2H9z"/>
-  <rect class="s" x="17" y="18" width="4" height="4"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke-width="2.2" stroke-linecap="round">
+  <style>.d{stroke:#141311}.s{stroke:#C8361D}@media (prefers-color-scheme:dark){.d{stroke:#EEEAE4}.s{stroke:#E2482B}}</style>
+  <path class="d" d="M12 3v18M4.2 7.5l15.6 9"/>
+  <path class="s" d="M4.2 16.5l15.6-9"/>
 </svg>

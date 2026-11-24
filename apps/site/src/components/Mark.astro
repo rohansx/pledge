@@ -1,0 +1,12 @@
+---
+// The Pledge asterisk, inline so each arm can animate: the arms draw in as hairlines,
+// then the mark turns 60° (one arm's step) on hover, or on a slow tick with `tick`.
+interface Props { size?: number; tick?: boolean }
+const { size = 20, tick = false } = Astro.props;
+---
+<svg class:list={['mark-live', { tick }]} width={size} height={size} viewBox="0 0 24 24" fill="none"
+  stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true">
+  <path pathLength="1" d="M12 4v16" />
+  <path pathLength="1" d="M5.1 8l13.8 8" />
+  <path pathLength="1" d="M5.1 16L18.9 8" stroke="var(--seal)" />
+</svg>
