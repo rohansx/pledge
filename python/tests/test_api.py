@@ -256,6 +256,32 @@ def test_authoring_time_belongs_to_the_first_scan_not_to_every_run_published_aft
     assert [row["durationSeconds"] for row in client.get("/api/repos/shop/runs").json()["data"]] == [29.4, 1268.1]
 
 
+def test_authoring_time_is_counted_once_when_every_baseline_of_a_first_scan_carried_the_report(client):
+    # Before the command line stopped doing it, each scenario's baseline was published as a first_scan run with
+    # the same author's report, so a repo with two scenarios showed the authoring minutes twice.
+    authoring = {"seconds": 1238.7, "phases": [], "summary": "wrote two scenarios", "open_questions": []}
+    first = scan(client, [pledge("one-charge", "kept", **KEPT)], trigger="first_scan", faults=None, authoring=authoring)
+    second = scan(client, [pledge("pays", "kept", **KEPT)], trigger="first_scan", faults=None, authoring=authoring)
+    again = scan(client, [pledge("pays", "kept", **KEPT)], trigger="first_scan", faults=None, authoring={**authoring, "seconds": 600.0})  # authored anew
+
+    read = lambda run: client.get(f"/api/runs/{run['id']}").json()["data"]  # noqa: E731
+    assert [(read(run)["durationSeconds"], read(run)["authored"]) for run in (first, second, again)] == [(1268.1, True), (29.4, False), (629.4, True)]
+    assert [row["durationSeconds"] for row in client.get("/api/repos/shop/runs").json()["data"]] == [629.4, 29.4, 1268.1]
+
+
+def test_a_run_that_broke_a_pledge_a_newer_run_already_kept_opens_no_finding():
+    store = MemoryStore()
+    client = TestClient(create_app(store, TOKEN), headers=AUTH)
+    slow = client.post("/api/repos/shop/runs", json={"trigger": "manual"}).json()["data"]
+    scan(client, [pledge("one-charge", "kept", **KEPT)])  # started later, finished first
+
+    done = client.post(f"/api/runs/{slow['id']}/result", json=result([pledge("one-charge", "broken")])).json()["data"]
+
+    assert client.get("/api/repos/shop/pledges").json()["data"][0]["lastVerdict"] == "kept"
+    assert store.list("finding") == [] and done["findingIds"] == []
+    assert store.events_after(slow["id"], 0)[-1]["payload"]["finding_ids"] == []  # no link to a finding that does not exist
+
+
 def test_a_run_not_heard_from_for_two_hours_reads_as_abandoned():
     from datetime import UTC, datetime, timedelta
 

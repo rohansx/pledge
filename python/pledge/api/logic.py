@@ -150,6 +150,10 @@ def _update_finding(store: Store, run: dict, result: dict, plans: dict[str, dict
         finding = {"id": str(uuid.uuid4()), "repo_id": run["repo_id"], "created_at": stamp, "pledge_id": pledge_id, "status": None, "first_run_id": run["id"], "faults_name": run["faults_name"], "history": []}
     before = finding["status"]
     current = _current({**finding, "status": before or "open"}, plans)
+    if before is None and (current is None or current["status"] == "verified"):
+        # This run broke it, but a run started after it under the same plan has already kept it: the standing
+        # is kept, so there is no finding to open (and no id to hand out for one that was never stored).
+        return None
     if current is None:
         return finding
     # Broke again after someone said it was fixed: their word is withdrawn, as a verified fix's is in _current.
@@ -229,8 +233,19 @@ def _effective(result: dict, unfired: set[int]) -> dict:
     }
 
 
-def _read(store: Store, run: dict) -> dict:
-    """A stored run as every view sees it. Idempotent, and never written back."""
+def _authored(run: dict, runs: list[dict]) -> bool:
+    """True when this run is the one its author's report belongs to: a first scan, and the oldest run of the
+    repo carrying that report. The report sits in the app directory, so later scans published from it carried
+    it too, and so did the baseline of every other scenario of the same first scan."""
+    report = run["record"].get("authoring")
+    if not report or run["trigger"] != "first_scan":
+        return False
+    return not any(other["created_at"] < run["created_at"] and other["trigger"] == "first_scan" and (other.get("record") or {}).get("authoring") == report for other in runs)
+
+
+def _read(store: Store, run: dict, runs: list[dict] | None = None) -> dict:
+    """A stored run as every view sees it. Idempotent, and never written back. `runs` is the repo's stored
+    runs when the caller already has them."""
     if run["phase"] not in ("done", "failed"):
         # ponytail: decided when read, from the last event (the store returns the first 500 of a run; a live
         # run that has sent more and then goes quiet for two hours is the ceiling). No job sweeps these.
@@ -242,15 +257,15 @@ def _read(store: Store, run: dict) -> dict:
     record = run.get("record")
     if not record:
         return run
-    if run["trigger"] != "first_scan":
-        # The author's report sits in the app directory, so every later scan published from it carried it too.
+    if record.get("authoring") and not _authored(run, store.list("run", run["repo_id"]) if runs is None else runs):
         record = {**record, "authoring": None}
     unfired = _unfired(run)
     return {**run, "record": record, "results": [_effective(result, unfired) for result in run["results"]]}
 
 
 def _runs(store: Store, repo_id: str) -> list[dict]:
-    return [_read(store, run) for run in store.list("run", repo_id)]
+    runs = store.list("run", repo_id)
+    return [_read(store, run, runs) for run in runs]
 
 
 def _summary(run: dict) -> dict | None:
