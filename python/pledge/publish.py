@@ -95,6 +95,7 @@ def build_record(app_dir: Path, report: dict, run_dirs: list[Path], faults_file:
         {
             "id": row["id"], "statement": row["statement"][:1000], "status": row["status"], "source": row["source"],
             "confidence": row["confidence"], "assertion": row["assertion"], "result": row["result"],
+            "reach": row.get("reach", "unknown"), "trigger": row.get("trigger", "")[:300],
             "kept": row["kept"], "broken": row["broken"], "unknown": row["unknown"],
             "seeds": [_seed(result, row["assertion"], result["seed"] not in quiet) if result["seed"] not in down else {"seed": result["seed"], "run_id": result["run_id"], "status": "unknown"} for result in results],
         }

@@ -39,6 +39,17 @@ Each pledge records its source, and the source sets its starting confidence:
 3. **Inferred:** Claude's reading of what the code intends. Lowest confidence, always shown
    for review first.
 
+## Who can break a pledge
+
+A route list says what could be called, not what is. Before any scenario, the author phase
+inventories the app's real callers (its frontend, extension, mobile or SDK code, webhook
+senders, workers and scheduled jobs) into `.pledge/callers.json`, and each pledge then says
+which of them can break it (`reach`) and how (`trigger`). A pledge that only a direct API
+caller could break is `api_only`, and its finding is listed last. The check verifies the
+inventory's shape, that every caller points at a file in the repo, and that every request
+the baseline made is listed. It does not verify that the file really makes the call or
+that the reach is the right one: that is the reviewer's judgment, with the reference open.
+
 Built so far: run a command, read a file, write a file, and finish. The HTTP request tool is
 covered by running curl, and running the engine is a command. See [phase-2](./phase-2.md).
 

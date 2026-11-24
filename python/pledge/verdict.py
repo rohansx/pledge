@@ -8,6 +8,9 @@ import sys
 from pathlib import Path
 
 PLEDGE_STATUSES = ("proposed", "proven", "approved", "retired")
+# Who, among the callers the app really has, can put it in the situation that breaks the pledge. `api_only`: no
+# shipped client does; only someone calling the API directly could. Files from before this field have none.
+REACHES = ("ui", "client", "provider", "internal", "api_only")
 DOWN_MIN_REQUESTS = 5
 
 
@@ -31,8 +34,10 @@ def load_pledges(app_dir: Path) -> list[dict]:
             or not isinstance(check, dict)
             or not all(isinstance(check.get(key), str) and check[key] for key in ("scenario", "assertion"))
             or pledge.get("status") not in PLEDGE_STATUSES
+            or pledge.get("reach") not in (None, *REACHES)
+            or not isinstance(pledge.get("trigger", ""), str)
         ):
-            raise PledgeError(f"{path}: needs schema_version 1, id, statement, source, check.scenario, check.assertion and a status of {', '.join(PLEDGE_STATUSES)}")
+            raise PledgeError(f"{path}: needs schema_version 1, id, statement, source, check.scenario, check.assertion, a status of {', '.join(PLEDGE_STATUSES)} and, when present, a reach of {', '.join(REACHES)} and a trigger sentence")
         pledges.append(pledge)
     return pledges
 
@@ -63,6 +68,7 @@ def judge(pledges: list[dict], counts: dict, scenario: str) -> dict:
         rows.append({
             "id": pledge["id"], "statement": pledge["statement"], "status": pledge["status"], "result": result,
             "source": pledge["source"], "confidence": str(pledge.get("confidence", "")), "assertion": pledge["check"]["assertion"],
+            "reach": pledge.get("reach") or "unknown", "trigger": pledge.get("trigger", ""),
             "kept": entry["pass"], "broken": entry["fail"], "unknown": entry["unknown"], "broken_in": entry["failed_runs"],
         })
     blocking = [row for row in rows if row["status"] == "approved"]

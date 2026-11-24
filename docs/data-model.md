@@ -21,7 +21,17 @@ Defined by hand in Phase 1 and validated by the `pledge` CLI. See the
 [demo shop](../demo/shop) for one of each.
 
 - **Pledge**, `.pledge/pledges/<id>.json`: `schema_version`, `id`, `statement`, `check`
-  (`scenario` and `assertion`), `source`, `confidence`, `status`.
+  (`scenario` and `assertion`), `source`, `confidence`, `status`, and, since the caller
+  inventory, `reach` (`ui`, `client`, `provider`, `internal` or `api_only`: which real caller
+  can break it) and `trigger` (one sentence naming the real-world cause). Files without the
+  two still load; their reach is shown as unknown.
+- **Caller inventory**, `.pledge/callers.json`: for each route a scenario calls, who calls it
+  (`kind` and a `ref` to a file in the repo) and whether that caller `retries`, can
+  `double_submit` or `redelivers`. An empty `callers` list means nothing shipped calls the
+  route. `pledge.check` validates it and compares it with the requests each baseline made.
+- **Browser steps**, `.pledge/scenarios/<name>/browser.cjs`, optional: what the user of a
+  broken journey does in the app's own frontend to see the damage. See
+  `python/pledge/browser_runner.cjs` for the contract.
 - **Faults**, `.pledge/faults/<name>.json`: a `faults` list. A run combines it with a seed
   into the fault plan the engine records.
 - **Boot recipe**, `pledge.boot.json`: the services to start with their health checks, the

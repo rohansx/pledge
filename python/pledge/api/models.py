@@ -9,6 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 Result = Literal["kept", "broken", "inconclusive"]
 PledgeStatus = Literal["proposed", "proven", "approved", "retired"]
+Reach = Literal["ui", "client", "provider", "internal", "api_only", "unknown"]
 FindingStatus = Literal["open", "fix_proposed", "fixed_unverified", "verified", "reopened"]
 Trigger = Literal["first_scan", "pull_request", "manual"]
 Phase = Literal["boot", "author", "prove", "run", "done", "failed"]
@@ -55,6 +56,9 @@ class PledgeIn(Strict):
     source: str = Field(max_length=40)
     confidence: str = Field(max_length=20)
     assertion: str = Field(max_length=120)
+    # Which real caller can break it, and how. Defaulted so a command line from before these fields still publishes.
+    reach: Reach = "unknown"
+    trigger: str = Field(default="", max_length=300)
     result: Result
     kept: int = Field(ge=0)
     broken: int = Field(ge=0)

@@ -64,6 +64,23 @@ def test_format_verdict_names_the_seeds_a_pledge_broke_on():
     assert lines[2] == "    broken on seed 0  r0"
 
 
+def test_a_pledges_reach_and_trigger_reach_its_verdict_row_and_an_older_file_has_none():
+    grounded = pledge("a", "x") | {"reach": "provider", "trigger": "The ticket printer redelivers its webhook."}
+    report = judge([grounded, pledge("b", "y")], counts(x=(3, 0), y=(3, 0)), "checkout")
+
+    assert [(row["reach"], row["trigger"]) for row in report["pledges"]] == [("provider", "The ticket printer redelivers its webhook."), ("unknown", "")]
+
+
+@pytest.mark.parametrize("extra", [{"reach": "everyone"}, {"trigger": 7}])
+def test_load_pledges_refuses_a_reach_or_trigger_it_does_not_know(tmp_path, extra):
+    folder = tmp_path / ".pledge" / "pledges"
+    folder.mkdir(parents=True)
+    (folder / "a.json").write_text(json.dumps(pledge("a", "x") | extra))
+
+    with pytest.raises(PledgeError, match="reach"):
+        load_pledges(tmp_path)
+
+
 def test_load_pledges_reads_valid_files_and_names_an_invalid_one(tmp_path):
     folder = tmp_path / ".pledge" / "pledges"
     folder.mkdir(parents=True)

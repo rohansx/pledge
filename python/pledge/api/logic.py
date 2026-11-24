@@ -27,6 +27,8 @@ from pledge.api.store import Store, now
 
 SEP = "~"
 SOURCES = {"stated": "code", "domain_template": "template", "inferred": "inferred"}
+# Findings a shipped client can cause come first; ones only a direct API caller could cause come last.
+REACH_ORDER = {"ui": 0, "client": 0, "provider": 0, "internal": 0, "unknown": 1, "api_only": 2}
 HISTORY_RUNS = 20
 LATEST = 5
 TREND_WEEKS = 12
@@ -110,7 +112,7 @@ def finish_run(store: Store, run_id: str, result: RunResultIn) -> dict:
             # A pledge starts with the status its file carries. After that, status changes only by a decision here.
             "status": item.status, "decision": None, "planted_bugs_caught": 0,
         }
-        pledge.update(statement=item.statement, source=SOURCES.get(item.source, "inferred"), confidence=item.confidence, assertion=item.assertion, updated_at=stamp)
+        pledge.update(statement=item.statement, source=SOURCES.get(item.source, "inferred"), confidence=item.confidence, assertion=item.assertion, reach=item.reach, trigger=item.trigger, updated_at=stamp)
         store.put("pledge", pledge)
         results.append({"pledge_id": pledge_id, "result": item.result, "kept": item.kept, "broken": item.broken, "unknown": item.unknown, "seeds": [seed.model_dump(exclude_none=True) for seed in item.seeds], "recording": item.recording.model_dump() if item.recording else None})
 
@@ -404,6 +406,7 @@ def pledge_row(pledge: dict, standing: dict[str, dict]) -> dict:
     return {
         "id": pledge["id"], "repoId": pledge["repo_id"], "key": pledge["key"], "scenario": pledge["scenario"], "statement": pledge["statement"],
         "status": pledge["status"], "source": pledge["source"], "sourceRef": None, "confidence": pledge["confidence"],
+        "reach": pledge.get("reach", "unknown"), "trigger": pledge.get("trigger", ""),  # absent on pledges stored before these fields
         "plantedBugsCaught": pledge["planted_bugs_caught"], "lastVerdict": last["result"] if last else None,
         "lastRunId": last["run_id"] if last else None, "lastFaults": last["faults"] if last else None,
         "lastSeeds": [seed["status"] for seed in last["seeds"]] if last else [], "decision": pledge.get("decision"),
@@ -468,6 +471,7 @@ def finding_row(store: Store, finding: dict, pledges: dict[str, dict]) -> dict:
         "brokenSeeds": finding["broken_seeds"], "totalSeeds": finding["total_seeds"], "faults": finding.get("faults_name"),
         "firstSeen": finding["created_at"], "updatedAt": finding["updated_at"],
         "severity": severity(pledge.get("key") or "", finding["statement"]),
+        "reach": pledge.get("reach", "unknown"), "trigger": pledge.get("trigger", ""),
         "expected": broken.get("expected"), "actual": broken.get("actual"),
     }
 
@@ -476,7 +480,7 @@ def finding_list(store: Store, repo_id: str, status: str | None = None) -> list[
     _need(store, "repo", repo_id)
     pledges = _pledges(store, repo_id)
     rows = [finding_row(store, finding, pledges) for finding in _findings(store, repo_id, _plans(_runs(store, repo_id)), pledges) if status is None or finding["status"] == status]
-    return sorted(rows, key=lambda row: (row["status"] == "verified", SEVERITY_ORDER[row["severity"]]))  # stable: newest first within a level
+    return sorted(rows, key=lambda row: (row["status"] == "verified", REACH_ORDER[row["reach"]], SEVERITY_ORDER[row["severity"]]))  # stable: newest first within a level
 
 
 def finding_view(store: Store, finding: dict) -> dict:
