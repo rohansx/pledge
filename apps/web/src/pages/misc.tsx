@@ -19,9 +19,9 @@ export function CoveragePage() {
 
 function Block({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <section className="grid grid-cols-1 gap-x-6 gap-y-2 border-b border-line py-6 md:grid-cols-[180px_minmax(0,1fr)]">
+    <section className="grid grid-cols-1 gap-x-6 gap-y-2 border-b border-line px-5 py-5 last:border-b-0 md:grid-cols-[180px_minmax(0,1fr)]">
       <h2 className="text-sm font-medium">{title}</h2>
-      <div className="max-w-[62ch] text-[14.5px] text-ink-2 [&_code]:rounded-xs [&_code]:bg-paper-2 [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:font-mono [&_code]:text-[12.5px] [&_code]:text-ink [&_p+p]:mt-3">{children}</div>
+      <div className="max-w-[62ch] text-sm text-ink-2 [&_code]:rounded-xs [&_code]:bg-paper-2 [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:font-mono [&_code]:text-[12.5px] [&_code]:text-ink [&_p+p]:mt-3">{children}</div>
     </section>
   );
 }
@@ -34,13 +34,13 @@ export function SettingsPage() {
   return (
     <>
       <PageTitle title="Settings" />
-      <div className="mt-6 border-t border-line">
+      <div className="mt-6 overflow-hidden rounded-xl border border-line bg-card shadow-xs">
         <Block title="Repo">
           <p><b className="font-medium text-ink">{repo?.name ?? repoId}</b>. It was created when the command line first published a run under this name. Connecting it to a GitHub repository, and choosing a branch to track, needs the GitHub App, which is not set up.</p>
         </Block>
         <Block title="Sending runs here">
           <p>The dashboard shows what the command line sends. With the token in <code>PLEDGE_API_TOKEN</code>:</p>
-          <pre className="texture mt-3 overflow-x-auto rounded-sm px-4 py-3.5 font-mono text-xs leading-relaxed text-[#CFC9C3]">{`pledge author <repo> --out <dir> --publish --app ${repoId}\npledge scan <dir> --scenario <name> --faults <file> --seeds 5 --publish --app ${repoId}`}</pre>
+          <pre className="mt-3 overflow-x-auto rounded-lg border border-line bg-paper-2/60 px-4 py-3.5 font-mono text-xs leading-relaxed text-ink">{`pledge author <repo> --out <dir> --publish --app ${repoId}\npledge scan <dir> --scenario <name> --faults <file> --seeds 5 --publish --app ${repoId}`}</pre>
           <p>A published run appears under Runs while it is still working.</p>
         </Block>
         <Block title="Account">

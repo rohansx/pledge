@@ -104,3 +104,24 @@ export function seconds(value: number): string {
 export function thousands(value: number): string {
   return value.toLocaleString("en-US");
 }
+
+/** What broke, in the app's own numbers: the checked values that missed, from the first seed that failed. */
+export function impact(seeds: { status: string; expected?: unknown; actual?: unknown }[]): CheckRow[] {
+  const seed = seeds.find((candidate) => candidate.status === "fail" && candidate.actual !== undefined);
+  return seed ? checkRows(seed.expected, seed.actual).filter((row) => row.differs) : [];
+}
+
+export type RunState = "running" | "stalled" | "failed" | "kept" | "broken" | "inconclusive";
+export const STALLED_AFTER_MS = 3 * 60 * 60 * 1000; // ponytail: runs have no heartbeat; one unfinished after 3 h is treated as dead
+
+/** A run's state as the dashboard shows it. A run that never reported its end reads as stalled, not running. */
+export function runState(run: { phase: string; verdict: string | null; createdAt: string }, now: Date = new Date()): RunState {
+  if (run.phase === "failed") return "failed";
+  if (run.phase === "done") return (run.verdict ?? "inconclusive") as RunState;
+  return now.getTime() - new Date(run.createdAt).getTime() > STALLED_AFTER_MS ? "stalled" : "running";
+}
+
+/** "transactions_charged_more_than_once" as a person says it. */
+export function words(key: string): string {
+  return key.replace(/[_/-]+/g, " ").trim();
+}

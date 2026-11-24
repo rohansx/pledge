@@ -20,19 +20,19 @@ const SOURCE = { code: "stated in code", template: "domain template", inferred: 
 
 function Row({ pledge }: { pledge: Pledge }) {
   return (
-    <Link to="/r/$repoId/pledges/$pledgeId" params={{ repoId: pledge.repoId, pledgeId: pledge.id }} className={`grid grid-cols-1 items-center gap-x-5 gap-y-2 border-b border-line px-3 py-4 hover:bg-glass sm:grid-cols-[minmax(0,1fr)_auto_96px] ${pledge.lastVerdict === "broken" ? "bg-seal-wash shadow-[inset_2px_0_0_var(--seal)]" : ""}`}>
+    <Link to="/r/$repoId/pledges/$pledgeId" params={{ repoId: pledge.repoId, pledgeId: pledge.id }} className={`grid grid-cols-1 items-center gap-x-5 gap-y-2 border-b border-line px-5 py-3.5 transition-colors last:border-b-0 hover:bg-paper-2/60 sm:grid-cols-[minmax(0,1fr)_auto_104px] ${pledge.lastVerdict === "broken" ? "shadow-[inset_2px_0_0_var(--seal)]" : ""}`}>
       <span className="min-w-0">
-        <span className="block text-[15.5px] font-medium leading-snug tracking-[-.01em]">{pledge.statement}</span>
-        <span className="mt-1.5 flex flex-wrap items-center gap-x-3.5 gap-y-1 font-mono text-[11.5px] text-mute">
+        <span className="line-clamp-2 text-sm font-medium leading-snug">{pledge.statement}</span>
+        <span className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-mute">
           <PledgeStatusBadge status={pledge.status} />
           <span>{SOURCE[pledge.source]}</span>
           {pledge.confidence ? <span>confidence: {pledge.confidence}</span> : null}
           <span>proof: {pledge.plantedBugsCaught === 0 ? "none yet" : `${pledge.plantedBugsCaught} planted bugs caught`}</span>
-          <span>{pledge.scenario}</span>
+          <span className="font-mono">{pledge.scenario}</span>
         </span>
       </span>
       <Seeds marks={pledge.lastSeeds} />
-      <span className="sm:text-right">{pledge.lastVerdict ? <VerdictBadge verdict={pledge.lastVerdict} /> : <span className="font-mono text-xs text-mute">not run</span>}</span>
+      <span className="sm:text-right">{pledge.lastVerdict ? <VerdictBadge verdict={pledge.lastVerdict} /> : <span className="text-xs text-mute">not run</span>}</span>
     </Link>
   );
 }
@@ -49,7 +49,7 @@ export function PledgesPage() {
       {pledges.isPending ? <Loading what="pledges" /> : null}
       {pledges.isError ? <ErrorNote error={pledges.error} retry={() => void pledges.refetch()} /> : null}
       {pledges.data?.length === 0 ? <Empty title={status ? `No pledge is ${status}.` : "No pledge has been checked for this repo yet."} /> : null}
-      {pledges.data && pledges.data.length > 0 ? <div className="mt-5 border-t border-line">{pledges.data.map((pledge) => <Row key={pledge.id} pledge={pledge} />)}</div> : null}
+      {pledges.data && pledges.data.length > 0 ? <div className="mt-4 overflow-hidden rounded-xl border border-line bg-card shadow-xs">{pledges.data.map((pledge) => <Row key={pledge.id} pledge={pledge} />)}</div> : null}
     </>
   );
 }
@@ -67,10 +67,10 @@ function Review({ pledge }: { pledge: PledgeDetail }) {
     <div className="mt-5">
       <div className="flex flex-wrap gap-2">
         {pledge.status !== "approved" ? (
-          proven ? <Button kind="solid" disabled={mutation.isPending} onClick={() => mutation.mutate({ action: "approve" })}>Approve</Button> : <Button kind="solid" disabled={overriding} onClick={() => setOverriding(true)}>Approve…</Button>
+          proven ? <Button variant="default" disabled={mutation.isPending} onClick={() => mutation.mutate({ action: "approve" })}>Approve</Button> : <Button variant="default" disabled={overriding} onClick={() => setOverriding(true)}>Approve…</Button>
         ) : null}
-        {pledge.status !== "approved" ? <Button kind="danger" disabled={mutation.isPending} onClick={() => mutation.mutate({ action: "reject" })}>Reject</Button> : null}
-        {pledge.status === "approved" ? <Button kind="danger" disabled={mutation.isPending} onClick={() => mutation.mutate({ action: "retire" })}>Retire</Button> : null}
+        {pledge.status !== "approved" ? <Button variant="destructive" disabled={mutation.isPending} onClick={() => mutation.mutate({ action: "reject" })}>Reject</Button> : null}
+        {pledge.status === "approved" ? <Button variant="destructive" disabled={mutation.isPending} onClick={() => mutation.mutate({ action: "retire" })}>Retire</Button> : null}
       </div>
       {overriding && pledge.status !== "approved" ? (
         <div className="mt-4 max-w-[640px] rounded-sm border border-line bg-amber-wash p-4">
@@ -80,14 +80,14 @@ function Review({ pledge }: { pledge: PledgeDetail }) {
             <textarea value={note} onChange={(event) => setNote(event.target.value)} rows={2} maxLength={1000} className="mt-1.5 w-full rounded-sm border border-line bg-card px-3 py-2 text-sm" />
           </label>
           <div className="mt-3 flex gap-2">
-            <Button kind="solid" disabled={mutation.isPending || note.trim() === ""} onClick={() => mutation.mutate({ action: "approve", override: true, note: note.trim() })}>Approve without proof</Button>
+            <Button variant="default" disabled={mutation.isPending || note.trim() === ""} onClick={() => mutation.mutate({ action: "approve", override: true, note: note.trim() })}>Approve without proof</Button>
             <Button onClick={() => setOverriding(false)}>Cancel</Button>
           </div>
         </div>
       ) : null}
       {mutation.isError ? <ErrorNote error={mutation.error} /> : null}
       {pledge.decision ? (
-        <p className="mt-3 font-mono text-[11.5px] text-mute">
+        <p className="mt-3 text-xs text-mute">
           Last decision: {pledge.decision.action}{pledge.decision.override ? " (override, no proof)" : ""} {when(pledge.decision.at)}{pledge.decision.note ? `. Note: ${pledge.decision.note}` : ""}
         </p>
       ) : null}
@@ -104,17 +104,17 @@ export function PledgePage() {
   const facts: [string, string][] = [["source", SOURCE[pledge.source]], ["confidence", pledge.confidence || "not given"], ["scenario", pledge.scenario], ["engine assertion", pledge.assertion], ["file in the repo", pledge.file]];
   return (
     <>
-      <Link to="/r/$repoId/pledges" params={{ repoId }} className="mb-4 block w-fit font-mono text-xs text-mute hover:text-ink">← All pledges</Link>
+      <Link to="/r/$repoId/pledges" params={{ repoId }} className="mb-5 inline-flex items-center gap-1.5 text-[13px] text-ink-2 hover:text-ink">← Pledges</Link>
       <div className="flex flex-wrap items-center gap-3">
         <PledgeStatusBadge status={pledge.status} />
         {pledge.lastVerdict ? <VerdictBadge verdict={pledge.lastVerdict} /> : null}
         {pledge.findingId ? <Link to="/r/$repoId/findings/$findingId" params={{ repoId, findingId: pledge.findingId }} className="font-mono text-xs text-ink-2 underline underline-offset-[3px]">its finding</Link> : null}
       </div>
-      <h1 className="mt-4 max-w-[30ch] text-[clamp(24px,3vw,34px)] font-semibold leading-[1.1] tracking-[-.035em]">{pledge.statement}</h1>
-      <dl className="mt-5 grid grid-cols-[max-content_1fr] gap-x-6 gap-y-1.5 font-mono text-[12.5px]">
-        {facts.flatMap(([name, value]) => [<dt key={name} className="text-mute">{name}</dt>, <dd key={`${name}-value`} className="[overflow-wrap:anywhere]">{value}</dd>])}
+      <h1 className="mt-3 max-w-[80ch] text-xl font-semibold leading-snug tracking-[-.02em] sm:text-[22px]">{pledge.statement}</h1>
+      <dl className="mt-5 grid grid-cols-[max-content_1fr] gap-x-6 gap-y-2 rounded-xl border border-line bg-card px-5 py-4 text-[13px] shadow-xs">
+        {facts.flatMap(([name, value]) => [<dt key={name} className="capitalize text-mute">{name}</dt>, <dd key={`${name}-value`} className="font-mono text-xs leading-5 [overflow-wrap:anywhere]">{value}</dd>])}
       </dl>
-      <p className="mt-4 max-w-[70ch] font-mono text-[11.5px] text-mute">The check itself lives in the repo and changes through a pull request. Approving or retiring here changes only whether it can block.</p>
+      <p className="mt-3 max-w-[70ch] text-xs text-mute">The check itself lives in the repo and changes through a pull request. Approving or retiring here changes only whether it can block.</p>
       <Review pledge={pledge} />
 
       <Section title="Proof" note="planted bugs this pledge caught">
@@ -127,7 +127,7 @@ export function PledgePage() {
 
       <Section title="History" note={`kept or broken across the last ${pledge.history.length} ${pledge.history.length === 1 ? "run" : "runs"}`}>
         {pledge.history.map((point) => (
-          <Link key={point.runId} to="/r/$repoId/runs/$runId" params={{ repoId, runId: point.runId }} className="grid grid-cols-[120px_minmax(0,1fr)_90px] items-center gap-4 border-b border-line px-3 py-3 font-mono text-[12.5px] text-ink-2 hover:bg-glass">
+          <Link key={point.runId} to="/r/$repoId/runs/$runId" params={{ repoId, runId: point.runId }} className="-mx-5 grid grid-cols-[110px_minmax(0,1fr)_80px] items-center gap-4 border-t border-line px-5 py-2.5 text-[13px] text-ink-2 hover:bg-paper-2/60">
             <span><VerdictBadge verdict={point.result} /></span>
             <span>{point.faults ? `under ${point.faults}` : "no faults (baseline)"}</span>
             <span className="text-right text-mute">{when(point.at)}</span>

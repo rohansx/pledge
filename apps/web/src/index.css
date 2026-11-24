@@ -55,17 +55,15 @@
   --color-amber-wash: var(--amber-wash);
   --font-sans: "Geist", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "Geist Mono", ui-monospace, monospace;
-  --radius-xs: 2px;
-  --radius-sm: 3px;
-  --radius-md: 4px;
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 10px;
+  --radius-xl: 12px;
 }
 
 @layer base {
-  body { background: var(--bg); color: var(--fg); font: 15px/1.5 var(--font-sans); -webkit-font-smoothing: antialiased; min-height: 100vh; }
-  /* paper grain over the whole page, as on the landing page */
-  body::after { content: ""; position: fixed; inset: 0; z-index: 100; pointer-events: none; background-image: var(--noise); opacity: var(--grain-op); mix-blend-mode: multiply; }
-  :root[data-theme="dark"] body::after { mix-blend-mode: screen; }
-  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) body::after { mix-blend-mode: screen; } }
+  body { background: var(--bg); color: var(--fg); font: 14px/1.5 var(--font-sans); -webkit-font-smoothing: antialiased; min-height: 100vh; }
   :focus-visible { outline: 2px solid var(--seal); outline-offset: 2px; }
   button, a, select, summary { cursor: pointer; }
   button:disabled { cursor: not-allowed; opacity: .5; }

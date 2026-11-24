@@ -1,7 +1,23 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { checkRows, plain, pledgeCount, plural, satisfies, seconds, seedsCount, show, verdictSentence, when } from "./format.ts";
+import { checkRows, impact, plain, pledgeCount, plural, runState, satisfies, seconds, seedsCount, show, verdictSentence, when } from "./format.ts";
+
+test("impact lists only the missed values of the first failing seed", () => {
+  const seeds = [
+    { status: "pass" },
+    { status: "fail", expected: { "/charges": { lte: 20 }, "/orders": 20 }, actual: { "/charges": 29, "/orders": 20 } },
+  ];
+  assert.deepEqual(impact(seeds), [{ key: "charges", expected: "at most 20", actual: "29", differs: true }]);
+  assert.deepEqual(impact([{ status: "fail" }]), []);
+});
+
+test("a run that never finished reads as stalled after three hours", () => {
+  const now = new Date("2026-01-01T12:00:00Z");
+  assert.equal(runState({ phase: "run", verdict: null, createdAt: "2026-01-01T11:00:00Z" }, now), "running");
+  assert.equal(runState({ phase: "run", verdict: null, createdAt: "2026-01-01T08:00:00Z" }, now), "stalled");
+  assert.equal(runState({ phase: "done", verdict: "broken", createdAt: "2026-01-01T08:00:00Z" }, now), "broken");
+});
 
 test("satisfies follows the engine's matchers", () => {
   assert.equal(satisfies(0, 0), true);

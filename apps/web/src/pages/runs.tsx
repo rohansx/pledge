@@ -3,8 +3,8 @@ import { Link, useParams } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 
 import { streamRun } from "../api.ts";
-import { Empty, ErrorNote, ExpectedActual, Loading, PageTitle, PledgeStatusBadge, RunStrip, Section, Seeds, VerdictBadge } from "../components/ui.tsx";
-import { plain, seconds, thousands, when } from "../format.ts";
+import { Empty, ErrorNote, ExpectedActual, Loading, PageTitle, PledgeStatusBadge, RunStrip, Section, Seeds, TABLE, VerdictBadge } from "../components/ui.tsx";
+import { plain, runState, seconds, thousands, when } from "../format.ts";
 import { commentQuery, runQuery, runsQuery } from "../queries.ts";
 import type { RunDetail, RunEvent } from "../types.ts";
 import { RunRow } from "./overview.tsx";
@@ -18,7 +18,7 @@ export function RunsPage() {
       {runs.isPending ? <Loading what="runs" /> : null}
       {runs.isError ? <ErrorNote error={runs.error} retry={() => void runs.refetch()} /> : null}
       {runs.data?.length === 0 ? <Empty title="No run yet."><p>Start one with <code>pledge scan &lt;app&gt; --scenario &lt;name&gt; --faults &lt;file&gt; --publish</code>.</p></Empty> : null}
-      {runs.data && runs.data.length > 0 ? <div className="mt-6 border-t border-line">{runs.data.map((run) => <RunRow key={run.id} run={run} />)}</div> : null}
+      {runs.data && runs.data.length > 0 ? <div className="mt-6 overflow-hidden rounded-xl border border-line bg-card shadow-xs [&>a:first-child]:border-t-0">{runs.data.map((run) => <RunRow key={run.id} run={run} />)}</div> : null}
     </>
   );
 }
@@ -67,15 +67,15 @@ function PhaseProgress({ run, events }: { run: RunDetail; events: RunEvent[] }) 
   const seeds = events.filter((event) => event.type === "seed_finished");
 
   return (
-    <ol className="mt-5 border-t border-line">
+    <ol className="-mx-5 -mb-5">
       {PHASES.map(([name, label, what]) => {
         const reached = started.has(name) || (name === "verdict" && run.phase === "done");
         const live = current === name;
         const passed = order.indexOf(name) < order.indexOf(current) || run.phase === "done";
         const skipped = !reached && passed;
         return (
-          <li key={name} className={`grid grid-cols-[92px_minmax(0,1fr)] gap-4 border-b border-line px-3 py-4 ${live ? "bg-card" : ""}`}>
-            <span className="flex items-start gap-2 pt-0.5 font-mono text-xs">
+          <li key={name} className={`grid grid-cols-[92px_minmax(0,1fr)] gap-4 border-t border-line px-5 py-3.5 ${live ? "bg-paper-2/60" : ""}`}>
+            <span className="flex items-start gap-2 pt-0.5 text-[13px]">
               {live && run.phase !== "done" ? <span className="live-dot mt-1" /> : <span className={`mt-1 h-2 w-2 rounded-full ${reached ? "bg-kept" : "bg-idle"}`} />}
               <span className={reached || live ? "font-medium text-ink" : "text-mute"}>{label}</span>
             </span>
@@ -111,7 +111,7 @@ function PhaseProgress({ run, events }: { run: RunDetail; events: RunEvent[] }) 
 function Comment({ runId }: { runId: string }) {
   const comment = useQuery(commentQuery(runId));
   if (!comment.data) return null;
-  return <pre className="mt-4 overflow-x-auto whitespace-pre-wrap rounded-sm border border-line bg-card p-4 font-mono text-xs leading-relaxed">{comment.data.markdown}</pre>;
+  return <pre className="overflow-x-auto whitespace-pre-wrap rounded-lg border border-line bg-paper-2/60 p-4 font-mono text-xs leading-relaxed">{comment.data.markdown}</pre>;
 }
 
 export function RunPage() {
@@ -130,21 +130,20 @@ export function RunPage() {
 
   return (
     <>
-      <Link to="/r/$repoId/runs" params={{ repoId }} className="mb-4 block w-fit font-mono text-xs text-mute hover:text-ink">← All runs</Link>
-      <section className="texture ticks rounded-md px-6 py-7 sm:px-8">
+      <Link to="/r/$repoId/runs" params={{ repoId }} className="mb-5 inline-flex items-center gap-1.5 text-[13px] text-ink-2 hover:text-ink">← Runs</Link>
+      <section className="rounded-xl border border-line bg-card px-5 py-5 shadow-xs sm:px-6">
         <div className="flex flex-wrap items-center gap-3">
-          <VerdictBadge verdict={run.phase === "failed" ? "failed" : running ? "running" : run.verdict} />
-          {running ? <span className="flex items-center gap-2 font-mono text-xs text-[#D9D4CE]"><span className="live-dot" />live</span> : null}
-          <span className="ml-auto"><Seeds marks={run.seedVerdicts} large dark /></span>
+          <VerdictBadge verdict={runState(run)} />
+          <span className="ml-auto"><Seeds marks={run.seedVerdicts} large /></span>
         </div>
-        <h1 className="mt-4 text-[clamp(24px,3.2vw,36px)] font-semibold leading-[1.08] tracking-[-.04em] text-[#F6F1EB]">
-          {run.scenario ?? "First scan"} <span className="font-normal text-[#8E8781]">{run.faults ? `under ${run.faults}` : running ? "" : "with no faults"}</span>
+        <h1 className="mt-3 text-2xl font-semibold tracking-[-.03em]">
+          {run.scenario ?? "First scan"} <span className="font-normal text-mute">{run.faults ? <>under <span className="font-mono text-xl">{run.faults}</span></> : running ? "" : "with no faults"}</span>
         </h1>
-        {run.failure ? <p className="mt-3 text-[15px] text-[#F8A08C]">This run stopped: {run.failure}</p> : null}
-        <div className="mt-3"><RunStrip summary={run.summary} dark /></div>
-        <p className="mt-5 flex flex-wrap gap-x-7 gap-y-2 border-t border-white/10 pt-4 font-mono text-[11.5px] text-[#8E8781]">
-          {facts.map(([name, value]) => <span key={name}>{name} <b className="font-medium text-[#E4DED8]">{value}</b></span>)}
-        </p>
+        {run.failure ? <p className="mt-2 text-sm text-seal">This run stopped: {run.failure}</p> : null}
+        <div className="mt-2"><RunStrip summary={run.summary} /></div>
+        <dl className="mt-4 flex flex-wrap gap-x-8 gap-y-2 border-t border-line pt-4 text-[13px]">
+          {facts.map(([name, value]) => <div key={name}><dt className="text-xs capitalize text-mute">{name}</dt><dd className="font-medium">{value}</dd></div>)}
+        </dl>
       </section>
 
       <Section title={running ? "Live progress" : "How the run went"} note={running ? "updates as the run works" : undefined}><PhaseProgress run={run} events={events} /></Section>
@@ -152,16 +151,16 @@ export function RunPage() {
       {run.results.length > 0 ? (
         <Section title="Pledges" note="results over this run's seeds">
           {run.results.map((result) => (
-            <details key={result.pledgeId} className={`border-b border-line ${result.result === "broken" ? "bg-seal-wash shadow-[inset_2px_0_0_var(--seal)]" : ""}`} open={result.result === "broken"}>
-              <summary className="grid grid-cols-1 items-center gap-x-5 gap-y-2 px-3 py-4 sm:grid-cols-[minmax(0,1fr)_auto_110px]">
+            <details key={result.pledgeId} className={`-mx-5 border-t border-line ${result.result === "broken" ? "shadow-[inset_2px_0_0_var(--seal)]" : ""}`} open={result.result === "broken"}>
+              <summary className="grid grid-cols-1 items-center gap-x-5 gap-y-2 px-5 py-3.5 hover:bg-paper-2/60 sm:grid-cols-[minmax(0,1fr)_auto_110px]">
                 <span className="min-w-0">
-                  <span className="block text-[15.5px] font-medium leading-snug tracking-[-.01em]">{result.statement}</span>
-                  <span className="mt-1.5 flex items-center gap-3 font-mono text-[11.5px] text-mute"><PledgeStatusBadge status={result.status} /><Link to="/r/$repoId/pledges/$pledgeId" params={{ repoId, pledgeId: result.pledgeId }} className="underline underline-offset-[3px]">open the pledge</Link></span>
+                  <span className="line-clamp-2 text-sm font-medium leading-snug">{result.statement}</span>
+                  <span className="mt-1.5 flex items-center gap-3 text-xs text-mute"><PledgeStatusBadge status={result.status} /><Link to="/r/$repoId/pledges/$pledgeId" params={{ repoId, pledgeId: result.pledgeId }} className="underline underline-offset-[3px]">open the pledge</Link></span>
                 </span>
                 <Seeds marks={result.seeds.map((seed) => seed.status)} />
-                <span className={`font-mono text-xs sm:text-right ${result.result === "broken" ? "font-semibold text-seal" : result.result === "kept" ? "text-kept" : "text-ink-2"}`}>{result.result === "broken" ? `broken ${result.broken} of ${result.seeds.length}` : result.result}</span>
+                <span className={`text-xs sm:text-right ${result.result === "broken" ? "font-semibold text-seal" : result.result === "kept" ? "text-kept" : "text-ink-2"}`}>{result.result === "broken" ? `broken ${result.broken} of ${result.seeds.length}` : result.result}</span>
               </summary>
-              <div className="px-3 pb-5"><ExpectedActual seeds={result.seeds} /></div>
+              <div className="border-t border-line bg-paper-2/40"><ExpectedActual seeds={result.seeds} /></div>
             </details>
           ))}
         </Section>
@@ -170,9 +169,9 @@ export function RunPage() {
       {run.phase === "done" ? (
         <Section title="Fault plan" note={run.faultPlan ? "the same faults on every seed; the seed picks which requests they hit" : undefined}>
           {run.faultPlan ? (
-            <div className="mt-4 grid grid-cols-1 overflow-hidden rounded-md border border-line md:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]">
-              <div className="bg-paper-2 p-6 text-[14.5px] text-ink-2"><b className="mb-2 block font-mono text-[13px] font-medium text-ink">{run.faultPlan.name}</b>{run.faultPlan.description || "No description."}</div>
-              <pre className="texture overflow-x-auto border-0 px-5 py-5 font-mono text-[12.5px] leading-[1.8] text-[#CFC9C3]">{JSON.stringify(run.faultPlan.faults, null, 2)}</pre>
+            <div className="grid grid-cols-1 overflow-hidden rounded-lg border border-line md:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]">
+              <div className="p-5 text-sm text-ink-2"><b className="mb-2 block font-mono text-[13px] font-medium text-ink">{run.faultPlan.name}</b>{run.faultPlan.description || "No description."}</div>
+              <pre className="overflow-x-auto border-t border-line bg-paper-2/60 px-5 py-5 font-mono text-xs leading-[1.8] md:border-l md:border-t-0">{JSON.stringify(run.faultPlan.faults, null, 2)}</pre>
             </div>
           ) : <p className="mt-4 text-sm text-ink-2">None. This was a baseline: the scenario ran with no faults injected.</p>}
         </Section>
@@ -180,33 +179,33 @@ export function RunPage() {
 
       {run.seedRuns.length > 0 ? (
         <Section title="Seeds" note="one sandbox fork each">
-          <div className="overflow-x-auto">
-            <table className="w-full border-collapse font-mono text-[12.5px]">
-              <thead><tr className="text-left text-mute [&>th]:border-b [&>th]:border-line [&>th]:py-2.5 [&>th]:pr-4 [&>th]:font-medium"><th>Seed</th><th>Engine verdict</th><th className="text-right">Requests</th><th className="text-right">Faults injected</th><th>Run directory</th><th>Limitations</th></tr></thead>
-              <tbody className="[&_td]:border-b [&_td]:border-line [&_td]:py-2.5 [&_td]:pr-4 [&_td]:align-top">
+          <div className="-mx-5 overflow-x-auto border-t border-line">
+            <table className={TABLE}>
+              <thead><tr><th>Seed</th><th>Engine verdict</th><th className="text-right">Requests</th><th className="text-right">Faults injected</th><th>Run directory</th><th>Limitations</th></tr></thead>
+              <tbody>
                 {run.seedRuns.map((seed) => (
                   <tr key={seed.seed}>
                     <td>{seed.seed}</td>
                     <td className={seed.verdict === "fail" ? "text-seal" : seed.verdict === "pass" ? "text-kept" : ""}>{seed.verdict}</td>
                     <td className="text-right tabular-nums">{thousands(seed.requests)}</td>
                     <td className="text-right tabular-nums">{seed.faults_injected}</td>
-                    <td>{seed.run_id}</td>
-                    <td>{seed.limitations.join("; ") || "none"}</td>
+                    <td className="font-mono text-xs">{seed.run_id}</td>
+                    <td className="min-w-[280px] text-xs text-ink-2">{seed.limitations.join("; ") || "none"}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
-          <p className="mt-3 max-w-[70ch] font-mono text-[11.5px] text-mute">Logs and the standalone report stay in each run directory on the machine that ran the scan. Storing them here is not built yet.</p>
+          <p className="mt-3 max-w-[70ch] text-xs text-mute">Logs and the standalone report stay in each run directory on the machine that ran the scan. Storing them here is not built yet.</p>
         </Section>
       ) : null}
 
       {run.authoring ? (
         <Section title="Written by Claude" note={`scenario, pledges and faults authored in ${seconds(run.authoring.seconds)}; checks in the sandbox accepted each phase`}>
-          <div className="overflow-x-auto">
-            <table className="w-full border-collapse font-mono text-[12.5px]">
-              <thead><tr className="text-left text-mute [&>th]:border-b [&>th]:border-line [&>th]:py-2.5 [&>th]:pr-4 [&>th]:font-medium"><th>Phase</th><th>Model</th><th className="text-right">Requests</th><th className="text-right">Tokens</th><th className="text-right">From cache</th><th className="text-right">Commands</th><th className="text-right">Time</th></tr></thead>
-              <tbody className="[&_td]:border-b [&_td]:border-line [&_td]:py-2.5 [&_td]:pr-4">
+          <div className="-mx-5 overflow-x-auto border-t border-line">
+            <table className={TABLE}>
+              <thead><tr><th>Phase</th><th>Model</th><th className="text-right">Requests</th><th className="text-right">Tokens</th><th className="text-right">From cache</th><th className="text-right">Commands</th><th className="text-right">Time</th></tr></thead>
+              <tbody>
                 {run.authoring.phases.map((phase) => <tr key={phase.phase}><td>{phase.phase}</td><td>{phase.model}</td><td className="text-right">{phase.requests}</td><td className="text-right">{thousands(phase.tokens)}</td><td className="text-right">{thousands(phase.cache_read_tokens)}</td><td className="text-right">{phase.commands}</td><td className="text-right">{seconds(phase.seconds)}</td></tr>)}
               </tbody>
             </table>
