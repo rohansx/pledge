@@ -121,7 +121,20 @@ export function runState(run: { phase: string; verdict: string | null; createdAt
   return now.getTime() - new Date(run.createdAt).getTime() > STALLED_AFTER_MS ? "stalled" : "running";
 }
 
+/** A checked field's name as a person says it: the last part of its path, "webhooks/order_created" reads "order created". */
+export function fieldName(key: string): string {
+  return words(key.split("/").filter(Boolean).pop() ?? "");
+}
+
 /** "transactions_charged_more_than_once" as a person says it. */
 export function words(key: string): string {
   return key.replace(/[_/-]+/g, " ").trim();
+}
+
+const ACRONYMS = new Set(["psp", "api", "id", "ids", "url", "sku", "pr", "json", "ui", "http", "csv", "otp", "jwt", "sms", "vat"]);
+
+/** A finding's short title from its pledge key: "psp-never-asked-to-charge-twice" reads "PSP never asked to charge twice". */
+export function title(key: string): string {
+  const text = words(key).split(" ").map((word) => (ACRONYMS.has(word.toLowerCase()) ? word.toUpperCase() : word)).join(" ");
+  return text.charAt(0).toUpperCase() + text.slice(1);
 }

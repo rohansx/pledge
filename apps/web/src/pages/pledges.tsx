@@ -117,9 +117,6 @@ export function PledgePage() {
       <p className="mt-3 max-w-[70ch] text-xs text-mute">The check itself lives in the repo and changes through a pull request. Approving or retiring here changes only whether it can block.</p>
       <Review pledge={pledge} />
 
-      <Section title="Proof" note="planted bugs this pledge caught">
-        <p className="mt-4 max-w-[70ch] text-sm text-ink-2">None yet. The prove step, where a bug is planted to show the pledge can break, is not built, so no pledge can be proven and approval needs an override.</p>
-      </Section>
 
       <Section title="Latest check" note={pledge.lastRunId ? <Link to="/r/$repoId/runs/$runId" params={{ repoId, runId: pledge.lastRunId }} className="underline underline-offset-[3px]">{pledge.lastFaults ? `the run under ${pledge.lastFaults}` : "the baseline run"}</Link> : undefined}>
         <div className="mt-2"><ExpectedActual seeds={pledge.seeds} /></div>

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { checkRows, impact, plain, pledgeCount, plural, runState, satisfies, seconds, seedsCount, show, verdictSentence, when } from "./format.ts";
+import { checkRows, impact, title, plain, pledgeCount, plural, runState, satisfies, seconds, seedsCount, show, verdictSentence, when } from "./format.ts";
 
 test("impact lists only the missed values of the first failing seed", () => {
   const seeds = [
@@ -90,4 +90,9 @@ test("plain drops markdown emphasis and code marks but keeps the words", () => {
   assert.equal(plain("2 * 3 * 4 and a lone ` mark"), "2 * 3 * 4 and a lone ` mark");
   assert.equal(plural(1, "seed"), "1 seed");
   assert.equal(plural(3, "seed"), "3 seeds");
+});
+
+test("a pledge key reads as a short title", () => {
+  assert.equal(title("psp-never-asked-to-charge-a-transaction-twice"), "PSP never asked to charge a transaction twice");
+  assert.equal(title("one_order_per_checkout"), "One order per checkout");
 });

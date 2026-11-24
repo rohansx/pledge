@@ -2,17 +2,18 @@ import { Check, Copy, Inbox, TriangleAlert } from "lucide-react";
 import { useState, type ReactNode } from "react";
 
 import { checkRows, thousands, type RunState } from "../format.ts";
-import type { FindingStatus, PledgeStatus, RunSummary, Seed } from "../types.ts";
+import type { FindingStatus, PledgeStatus, RunSummary, Seed, Severity } from "../types.ts";
 
 // shadcn's shapes (card, badge, button, table) on the landing page's colours: paper, ink, seal red, kept green,
 // amber. Colour always comes with a word or an icon, never alone.
 
-type Tone = "seal" | "kept" | "amber" | "ink" | "mute";
+type Tone = "seal" | "kept" | "amber" | "info" | "ink" | "mute";
 
 const TONE: Record<Tone, { badge: string; dot: string }> = {
   seal: { badge: "border-seal/25 bg-seal-wash text-seal", dot: "bg-seal" },
   kept: { badge: "border-kept/25 bg-kept-wash text-kept", dot: "bg-kept" },
   amber: { badge: "border-amber/25 bg-amber-wash text-amber", dot: "bg-amber" },
+  info: { badge: "border-info/25 bg-info-wash text-info", dot: "bg-info" },
   ink: { badge: "border-ink bg-ink text-paper", dot: "bg-paper" },
   mute: { badge: "border-line bg-paper-2 text-ink-2", dot: "bg-mute" },
 };
@@ -26,12 +27,20 @@ export function Badge({ tone = "mute", dot = true, pulse = false, children }: { 
   );
 }
 
-const VERDICT: Record<RunState, Tone> = { broken: "seal", kept: "kept", inconclusive: "mute", running: "ink", stalled: "amber", failed: "seal" };
+const VERDICT: Record<RunState, Tone> = { broken: "seal", kept: "kept", inconclusive: "mute", running: "info", stalled: "mute", failed: "seal" };
 
 /** Kept, broken or inconclusive, and for a run also running, stalled or failed. */
 export function VerdictBadge({ verdict }: { verdict: RunState | null }) {
   const word = verdict ?? "inconclusive";
   return <Badge tone={VERDICT[word]} pulse={word === "running"}>{word}</Badge>;
+}
+
+const SEVERITY: Record<Severity, [Tone, string]> = { money: ["seal", "Money"], duplicate: ["amber", "Duplicate records"], data: ["mute", "Wrong data"] };
+
+/** How bad a broken pledge is, in the order a lead triages: money, then duplicated records, then other wrong data. */
+export function SeverityBadge({ severity }: { severity: Severity }) {
+  const [tone, word] = SEVERITY[severity];
+  return <Badge tone={tone} dot={false}>{word}</Badge>;
 }
 
 const PLEDGE_TONE: Record<PledgeStatus, Tone> = { proposed: "amber", proven: "mute", approved: "kept", retired: "mute" };

@@ -310,32 +310,54 @@ def _replay(scenario: str, faults_name: str | None, seed: int) -> str:
     return f"pledge run . --scenario {scenario}{faults} --seed {seed}"
 
 
-def finding_row(finding: dict, pledges: dict[str, dict]) -> dict:
+MONEY = re.compile(r"charg|payment|pay\b|paid|revenue|refund|price|amount|balance|invoice|credit|debit|psp|capture|money|billing|total")
+DUPLICATE = re.compile(r"once|twice|duplicat|exactly one|single|\bone\b|unique|double")
+SEVERITY_ORDER = {"money": 0, "duplicate": 1, "data": 2}
+
+
+def severity(key: str, statement: str) -> str:
+    """Money first, then duplicated records, then other wrong data: the order a lead triages in.
+    ponytail: keyword match on the pledge's words; a severity field the author writes would be exact."""
+    text = f"{key} {statement}".lower()
+    return "money" if MONEY.search(text) else "duplicate" if DUPLICATE.search(text) else "data"
+
+
+def _first_broken(store: Store, finding: dict) -> dict:
+    """The first failing seed of the run that last broke this finding's pledge: where its numbers come from."""
+    run = store.get("run", finding["run_id"]) or {"results": []}
+    result = next((item for item in run["results"] if item["pledge_id"] == finding["pledge_id"]), {"seeds": []})
+    return next((seed for seed in result["seeds"] if seed["status"] == "fail"), {})
+
+
+def finding_row(store: Store, finding: dict, pledges: dict[str, dict]) -> dict:
     pledge = pledges.get(finding["pledge_id"], {})
+    broken = _first_broken(store, finding)
     return {
         "id": finding["id"], "repoId": finding["repo_id"], "pledgeId": finding["pledge_id"], "pledgeKey": pledge.get("key"),
         "pledgeStatus": pledge.get("status"), "statement": finding["statement"], "status": finding["status"], "runId": finding["run_id"],
         "brokenSeeds": finding["broken_seeds"], "totalSeeds": finding["total_seeds"], "faults": finding.get("faults_name"),
         "firstSeen": finding["created_at"], "updatedAt": finding["updated_at"],
+        "severity": severity(pledge.get("key") or "", finding["statement"]),
+        "expected": broken.get("expected"), "actual": broken.get("actual"),
     }
 
 
 def finding_list(store: Store, repo_id: str, status: str | None = None) -> list[dict]:
     _need(store, "repo", repo_id)
     pledges = _pledges(store, repo_id)
-    return [finding_row(finding, pledges) for finding in store.list("finding", repo_id) if status is None or finding["status"] == status]
+    rows = [finding_row(store, finding, pledges) for finding in store.list("finding", repo_id) if status is None or finding["status"] == status]
+    return sorted(rows, key=lambda row: (row["status"] == "verified", SEVERITY_ORDER[row["severity"]]))  # stable: newest first within a level
 
 
 def finding_view(store: Store, finding: dict) -> dict:
     pledges = _pledges(store, finding["repo_id"])
     run = store.get("run", finding["run_id"]) or {"results": [], "record": None, "scenario": None, "phase": "done"}
     result = next((item for item in run["results"] if item["pledge_id"] == finding["pledge_id"]), {"seeds": []})
-    first_broken = next((seed for seed in result["seeds"] if seed["status"] == "fail"), {})
     recording = result.get("recording")
     record = run.get("record") or {}
     return {
-        **finding_row(finding, pledges),
-        "seeds": result["seeds"], "expected": first_broken.get("expected"), "actual": first_broken.get("actual"),
+        **finding_row(store, finding, pledges),
+        "seeds": result["seeds"],
         "summary": _summary(run) if run.get("record") else None, "faultPlan": record.get("faults"),
         # The recording is one broken journey as the proxy saw it; runs from before the proxy logged traffic have none.
         # Nothing shrinks a fault plan yet, so that stays empty rather than invented.
@@ -399,7 +421,7 @@ def overview(store: Store, repo_id: str) -> dict:
         },
         "trend": [{"week": week, **counts} for week, counts in sorted(weeks.items())][-TREND_WEEKS:],
         "latestRuns": [run_row(run, pledges) for run in runs[:LATEST]],
-        "latestFindings": [finding_row(finding, pledges) for finding in findings[:LATEST]],
+        "latestFindings": finding_list(store, repo_id)[:LATEST],
     }
 
 

@@ -7,6 +7,7 @@ export type Verdict = "kept" | "broken" | "inconclusive";
 export type FindingStatus = "open" | "fix_proposed" | "fixed_unverified" | "verified" | "reopened";
 export type Phase = "boot" | "author" | "prove" | "run" | "done" | "failed";
 export type SeedStatus = "pass" | "fail" | "unknown";
+export type Severity = "money" | "duplicate" | "data";
 
 /** The run strip. */
 export interface RunSummary {
@@ -123,6 +124,10 @@ export interface Finding {
   faults: string | null;
   firstSeen: string;
   updatedAt: string;
+  severity: Severity;
+  /** The first failing seed's checked values, so a list can show the damage. */
+  expected: unknown;
+  actual: unknown;
 }
 
 export interface RecordingStep {
@@ -134,8 +139,6 @@ export interface RecordingStep {
 
 export interface FindingDetail extends Finding {
   seeds: Seed[];
-  expected: unknown;
-  actual: unknown;
   summary: RunSummary | null;
   faultPlan: FaultPlan | null;
   timeline: RecordingStep[];

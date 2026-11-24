@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link, Outlet, useNavigate, useParams } from "@tanstack/react-router";
-import { Bug, ChevronsUpDown, FileCheck2, Grid2x2, LayoutDashboard, LogOut, Moon, Play, Settings, Sun } from "lucide-react";
+import { Bug, ChevronsUpDown, FileCheck2, LayoutDashboard, LogOut, Moon, Play, Settings, Sun } from "lucide-react";
 
 import { setToken } from "../api.ts";
 import { meQuery, overviewQuery } from "../queries.ts";
@@ -22,7 +22,6 @@ const TABS = [
   ["findings", "Findings", Bug],
   ["pledges", "Pledges", FileCheck2],
   ["runs", "Runs", Play],
-  ["coverage", "Coverage", Grid2x2],
   ["settings", "Settings", Settings],
 ] as const;
 
@@ -67,7 +66,7 @@ function RepoSwitcher({ repoId }: { repoId: string }) {
   return (
     <label className="relative block">
       <span className="sr-only">Repo</span>
-      <span aria-hidden="true" className="pointer-events-none absolute left-2.5 top-1/2 grid size-6 -translate-y-1/2 place-items-center rounded-md bg-seal text-[11px] font-semibold uppercase text-white">{repoId[0]}</span>
+      <span aria-hidden="true" className="pointer-events-none absolute left-2.5 top-1/2 grid size-6 -translate-y-1/2 place-items-center rounded-md bg-ink text-paper text-[11px] font-semibold uppercase">{repoId[0]}</span>
       <select
         value={repoId}
         onChange={(event) => void navigate({ to: "/r/$repoId/overview", params: { repoId: event.target.value } })}

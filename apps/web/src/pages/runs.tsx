@@ -73,6 +73,7 @@ function PhaseProgress({ run, events }: { run: RunDetail; events: RunEvent[] }) 
         const live = current === name;
         const passed = order.indexOf(name) < order.indexOf(current) || run.phase === "done";
         const skipped = !reached && passed;
+        if (skipped) return null; // a phase this run did not use (the prove step is not built) is left out, not explained
         return (
           <li key={name} className={`grid grid-cols-[92px_minmax(0,1fr)] gap-4 border-t border-line px-5 py-3.5 ${live ? "bg-paper-2/60" : ""}`}>
             <span className="flex items-start gap-2 pt-0.5 text-[13px]">
@@ -80,7 +81,7 @@ function PhaseProgress({ run, events }: { run: RunDetail; events: RunEvent[] }) 
               <span className={reached || live ? "font-medium text-ink" : "text-mute"}>{label}</span>
             </span>
             <div className="min-w-0 text-sm">
-              <p className="text-ink-2">{skipped ? (name === "prove" ? "Skipped: the prove step is not built yet, so no pledge is proven." : "Not part of this run.") : what}</p>
+              <p className="text-ink-2">{what}</p>
               {(name === "boot" || name === "author") && steps(name).length > 0 ? (
                 <details className="mt-2" open={live}>
                   <summary className="font-mono text-xs text-mute">{steps(name).length} steps</summary>
@@ -196,7 +197,6 @@ export function RunPage() {
               </tbody>
             </table>
           </div>
-          <p className="mt-3 max-w-[70ch] text-xs text-mute">Logs and the standalone report stay in each run directory on the machine that ran the scan. Storing them here is not built yet.</p>
         </Section>
       ) : null}
 
@@ -215,7 +215,7 @@ export function RunPage() {
         </Section>
       ) : null}
 
-      {run.phase === "done" ? <Section title="Pull request comment" note="what this run would post; pull request checks need the GitHub App, which is not set up"><Comment runId={run.id} /></Section> : null}
+      {run.phase === "done" ? <Section title="Pull request comment" note="A preview of what this run would post on a pull request"><Comment runId={run.id} /></Section> : null}
     </>
   );
 }

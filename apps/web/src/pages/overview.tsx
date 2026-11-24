@@ -3,8 +3,8 @@ import { Link, useParams } from "@tanstack/react-router";
 import { ArrowRight, CircleCheck, ShieldAlert, TriangleAlert, type LucideIcon } from "lucide-react";
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 
-import { Card, Empty, ErrorNote, FindingStatusBadge, Loading, PageTitle, RunStrip, SeedCount, Seeds, Stat, VerdictBadge } from "../components/ui.tsx";
-import { runState, thousands, when } from "../format.ts";
+import { Card, Empty, ErrorNote, FindingStatusBadge, Loading, PageTitle, RunStrip, SeedCount, Seeds, SeverityBadge, Stat, VerdictBadge } from "../components/ui.tsx";
+import { fieldName, impact, runState, thousands, title, when } from "../format.ts";
 import { overviewQuery } from "../queries.ts";
 import type { Finding, Overview, Run } from "../types.ts";
 
@@ -25,14 +25,31 @@ export function RunRow({ run }: { run: Run }) {
   );
 }
 
+/** The damage in one line: the first checked value that missed, as the app counted it. */
+export function Damage({ expected, actual }: { expected: unknown; actual: unknown }) {
+  const rows = impact([{ status: "fail", expected, actual }]);
+  const row = rows[0];
+  if (!row) return null;
+  return (
+    <span className="block sm:text-right">
+      <span className="text-sm font-semibold text-seal tabular-nums">{row.actual === "null" ? "none" : row.actual}</span> <span className="text-[13px] text-ink">{fieldName(row.key) || "found"}</span>
+      <span className="block text-xs text-mute">expected {row.expected}{rows.length > 1 ? ` · +${rows.length - 1} more` : ""}</span>
+    </span>
+  );
+}
+
 export function FindingRow({ finding }: { finding: Finding }) {
   return (
-    <Link to="/r/$repoId/findings/$findingId" params={{ repoId: finding.repoId, findingId: finding.id }} className={`${ROW} sm:grid-cols-[minmax(0,1fr)_auto_auto_72px]`}>
+    <Link to="/r/$repoId/findings/$findingId" params={{ repoId: finding.repoId, findingId: finding.id }} className={`${ROW} sm:grid-cols-[minmax(0,1fr)_minmax(120px,auto)_64px_auto_64px]`}>
       <span className="min-w-0">
-        <span className="line-clamp-2 text-sm font-medium leading-snug">{finding.statement}</span>
-        <span className="mt-1 block truncate font-mono text-xs text-mute">{finding.pledgeKey}{finding.faults ? ` · ${finding.faults}` : ""}</span>
+        <span className="flex flex-wrap items-center gap-2">
+          <span className="text-sm font-semibold">{finding.pledgeKey ? title(finding.pledgeKey) : finding.statement}</span>
+          <SeverityBadge severity={finding.severity} />
+        </span>
+        <span className="mt-0.5 line-clamp-1 text-[13px] text-ink-2">{finding.statement}</span>
       </span>
-      <SeedCount broken={finding.brokenSeeds.length} total={finding.totalSeeds} />
+      <Damage expected={finding.expected} actual={finding.actual} />
+      <span className="flex items-center gap-1.5 sm:justify-end"><SeedCount broken={finding.brokenSeeds.length} total={finding.totalSeeds} /></span>
       <FindingStatusBadge status={finding.status} />
       <span className="text-xs text-mute sm:text-right">{when(finding.firstSeen)}</span>
     </Link>
@@ -96,7 +113,7 @@ export function OverviewPage() {
   if (data.latestRuns.length === 0) {
     return (
       <Empty title={`${data.repo.name} has not been scanned yet.`}>
-        <p>Starting a scan from here needs the orchestrator, which is not built. Run the first scan from the command line: <code>pledge author &lt;repo&gt; --out &lt;dir&gt; --publish</code>.</p>
+        <p>Run the first scan from the command line: <code>pledge author &lt;repo&gt; --out &lt;dir&gt; --publish</code>.</p>
       </Empty>
     );
   }
@@ -118,11 +135,11 @@ export function OverviewPage() {
       <div className="mt-4 grid grid-cols-2 gap-4 lg:grid-cols-4">
         <Stat label="Open findings" value={counters.openFindings} tone={counters.openFindings > 0 ? "seal" : undefined} hint={`${counters.bugsCaught} caught in total`} />
         <Stat label="Pledges kept" value={<>{headline.kept}<span className="text-lg text-mute">/{headline.total}</span></>} hint={`${counters.approvedPledges} approved`} />
-        <Stat label="Faults injected" value={thousands(counters.faultsInjected)} hint={`across ${thousands(counters.seedsRun)} seeds`} />
-        <Stat label="Pull requests checked" value={counters.pullRequestsChecked} hint="needs the GitHub App" />
+        <Stat label="Faults injected" value={thousands(counters.faultsInjected)} hint="across every run" />
+        <Stat label="Seeds run" value={thousands(counters.seedsRun)} hint={`${data.latestRuns.length} recent runs`} />
       </div>
 
-      <Card className="mt-6" title="Open findings" description="Pledges that broke in a scan, newest first" action={<Link to="/r/$repoId/findings" params={{ repoId }} className={ALL}>View all</Link>}>
+      <Card className="mt-6" title="Open findings" description="Most severe first: money, then duplicate records, then wrong data" action={<Link to="/r/$repoId/findings" params={{ repoId }} className={ALL}>View all</Link>}>
         {data.latestFindings.length === 0 ? <p className="border-t border-line px-5 py-4 text-sm text-ink-2">No pledge has broken in any scan of this repo.</p> : data.latestFindings.map((finding) => <FindingRow key={finding.id} finding={finding} />)}
       </Card>
 

@@ -87,6 +87,15 @@ def test_finding_detail_carries_expected_actual_and_a_replay_command(client):
     assert detail["blocks"] is False
 
 
+def test_the_findings_list_carries_the_damage_and_puts_money_first(client):
+    scan(client, [pledge("item-update-persists", "broken"), pledge("comment-created-once", "broken"), pledge("psp-never-charged-twice", "broken")])
+
+    findings = client.get("/api/repos/shop/findings").json()["data"]
+
+    assert [(f["pledgeKey"], f["severity"]) for f in findings] == [("psp-never-charged-twice", "money"), ("comment-created-once", "duplicate"), ("item-update-persists", "data")]
+    assert findings[0]["expected"] == {"/charged_twice": 0} and findings[0]["actual"] == {"/charged_twice": 13}
+
+
 def test_a_recording_becomes_the_finding_timeline_and_its_seed_the_replay(client):
     broken = pledge("one-charge", "broken", seeds=("fail", "fail"))
     steps = [

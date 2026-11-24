@@ -3,10 +3,10 @@ import { Link, useNavigate, useParams, useSearch } from "@tanstack/react-router"
 import { ArrowLeft, Bot, Check, ExternalLink } from "lucide-react";
 import { useState } from "react";
 
-import { Button, Card, CopyCommand, Empty, ErrorNote, ExpectedActual, FindingStatusBadge, Loading, PageTitle, PledgeStatusBadge, RunStrip, Seeds } from "../components/ui.tsx";
+import { Button, Card, CopyCommand, Empty, ErrorNote, ExpectedActual, FindingStatusBadge, Loading, PageTitle, PledgeStatusBadge, RunStrip, Seeds, SeverityBadge } from "../components/ui.tsx";
 import { BrowserRecording } from "../components/browser-recording.tsx";
 import { Recording } from "../components/recording.tsx";
-import { impact, when, words } from "../format.ts";
+import { fieldName, impact, title, when } from "../format.ts";
 import { findingQuery, findingsQuery, useSetFindingStatus } from "../queries.ts";
 import type { FindingDetail } from "../types.ts";
 import { FindingRow } from "./overview.tsx";
@@ -97,7 +97,7 @@ function Rail({ finding }: { finding: FindingDetail }) {
             </div>
           )}
           {mutation.isError ? <ErrorNote error={mutation.error} /> : null}
-          <p className="text-xs leading-relaxed text-mute">Marking it fixed does not verify it. A later scan on the fixing commit that keeps the pledge on every seed does.</p>
+          <p className="text-xs leading-relaxed text-mute">Marking it fixed does not close it. A later scan that keeps the pledge on every seed under the same faults verifies it.</p>
         </div>
       </Card>
       <Card title="Reproduce">
@@ -122,9 +122,9 @@ function Impact({ finding }: { finding: FindingDetail }) {
       <div className="grid grid-cols-1 gap-px border-t border-seal/20 bg-seal/15 sm:grid-cols-2">
         {rows.slice(0, 4).map((row) => (
           <div key={row.key} className="bg-card px-5 py-4">
-            <p className="text-[13px] text-ink-2 first-letter:uppercase">{words(row.key) || "value"}</p>
+            <p className="text-[13px] text-ink-2 first-letter:uppercase">{fieldName(row.key) || "value"}</p>
             <p className="mt-1 flex items-baseline gap-2">
-              <span className="text-3xl font-semibold tracking-[-.03em] text-seal tabular-nums">{row.actual}</span>
+              <span className="text-3xl font-semibold tracking-[-.03em] text-seal tabular-nums">{row.actual === "null" ? "none" : row.actual}</span>
               <span className="text-[13px] text-mute">expected {row.expected}</span>
             </p>
           </div>
@@ -144,8 +144,13 @@ export function FindingPage() {
     <>
       <Link to="/r/$repoId/findings" params={{ repoId }} className="mb-5 inline-flex items-center gap-1.5 text-[13px] text-ink-2 hover:text-ink"><ArrowLeft className="size-3.5" />Findings</Link>
       <header className="max-w-[80ch]">
-        <p className="font-mono text-xs text-mute">{finding.pledgeKey}</p>
-        <h1 className="mt-1.5 text-xl font-semibold leading-snug tracking-[-.02em] sm:text-[22px]">{finding.statement}</h1>
+        <div className="flex flex-wrap items-center gap-2">
+          <SeverityBadge severity={finding.severity} />
+          <FindingStatusBadge status={finding.status} />
+          {finding.faults ? <span className="font-mono text-xs text-mute">under {finding.faults}</span> : null}
+        </div>
+        <h1 className="mt-2.5 text-2xl font-semibold tracking-[-.03em]">{finding.pledgeKey ? title(finding.pledgeKey) : "Broken pledge"}</h1>
+        <p className="mt-1.5 text-[15px] leading-relaxed text-ink-2">{finding.statement}</p>
         <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1">
           <RunStrip summary={finding.summary} />
           <Link to="/r/$repoId/pledges/$pledgeId" params={{ repoId, pledgeId: finding.pledgeId }} className="inline-flex items-center gap-1 text-[13px] text-ink-2 hover:text-ink">Open the pledge <ExternalLink className="size-3" /></Link>
@@ -170,7 +175,7 @@ export function FindingPage() {
             <div className="border-t border-line"><ExpectedActual seeds={finding.seeds} /></div>
           </Card>
 
-          <Card title="Fault injected" description={finding.minimalFaultPlan.length === 0 ? "The whole plan the run used. Reducing it to the one fault that matters is not built yet." : "The smallest plan that still breaks it"}>
+          <Card title="Fault injected" description={finding.minimalFaultPlan.length === 0 ? "The fault plan the run used" : "The smallest plan that still breaks it"}>
             <div className="border-t border-line px-5 py-4">
               {finding.faultPlan?.description ? <p className="mb-3 text-sm text-ink-2">{finding.faultPlan.description}</p> : null}
               <ul className="space-y-1 font-mono text-xs">

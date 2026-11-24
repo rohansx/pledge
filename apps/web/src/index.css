@@ -1,39 +1,39 @@
 @import "tailwindcss";
 
-/* The dashboard shares the landing page's material: warm paper, ink, one seal red, hairlines, 3px corners,
-   Geist for prose and Geist Mono for anything a machine produced. The values are copied from apps/site and
-   exposed to Tailwind below, so utilities such as bg-paper and text-mute follow the theme. */
+/* Neutral zinc surfaces and Radix colour steps for status: red is only ever "broken" (and the logo's asterisk),
+   green kept, amber needs a look, blue running. Text shades are the scale's step 11 so they pass 4.5:1 on their
+   wash. Geist for prose, Geist Mono for anything a machine produced. Exposed to Tailwind below. */
 
 :root {
-  --bg: #F6F5F1; --bg-2: #ECEAE4; --card: #FFFFFF;
-  --fg: #141311; --fg-2: #5E5854; --mute: #8A8380; --line: #DCD8D1;
-  --glass: rgba(255,255,255,.5); --glass-hi: rgba(255,255,255,.8);
-  --tex-hi: #4A4440; --tex-lo: #141311;
-  --dark-line: #2E2A27; --dark-fg: #EEEAE4; --dark-mute: #8E8781;
-  --seal: #C8361D; --kept: #3F8A57; --amber: #A8661F; --idle: #CFCAC2;
-  --seal-wash: rgba(200,54,29,.07); --kept-wash: rgba(63,138,87,.09); --amber-wash: rgba(168,102,31,.1);
+  --bg: #FAFAFA; --bg-2: #F4F4F5; --card: #FFFFFF;
+  --fg: #09090B; --fg-2: #52525B; --mute: #71717A; --line: #E4E4E7;
+  --glass: rgba(255,255,255,.6); --glass-hi: rgba(255,255,255,.9);
+  --tex-hi: #3F3F46; --tex-lo: #09090B;
+  --dark-line: #27272A; --dark-fg: #FAFAFA; --dark-mute: #A1A1AA;
+  --seal: #CE2C31; --kept: #218358; --amber: #AB6400; --info: #0D74CE; --idle: #D4D4D8;
+  --seal-wash: #FEEBEC; --kept-wash: #E6F6EB; --amber-wash: #FFF7C2; --info-wash: #E6F4FE;
   --grain-op: .05;
   --noise: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.6'/%3E%3C/svg%3E");
   color-scheme: light;
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --bg: #0D0C0B; --bg-2: #151412; --card: #181615;
-    --fg: #EEEAE4; --fg-2: #A39C96; --mute: #77706B; --line: #2A2724;
-    --glass: rgba(34,31,29,.45); --glass-hi: rgba(255,255,255,.06);
-    --tex-hi: #3A3532; --tex-lo: #0E0D0C; --dark-line: #2A2724;
-    --seal: #E2482B; --kept: #5BAF78; --amber: #E8A15A; --idle: #3A3633;
-    --seal-wash: rgba(226,72,43,.1); --kept-wash: rgba(91,175,120,.1); --amber-wash: rgba(232,161,90,.1);
+    --bg: #09090B; --bg-2: #18181B; --card: #111113;
+    --fg: #FAFAFA; --fg-2: #A1A1AA; --mute: #8B8B94; --line: #27272A;
+    --glass: rgba(24,24,27,.5); --glass-hi: rgba(255,255,255,.06);
+    --tex-hi: #3F3F46; --tex-lo: #09090B; --dark-line: #27272A;
+    --seal: #EC5D5E; --kept: #33B074; --amber: #FFC53D; --info: #70B8FF; --idle: #3F3F46;
+    --seal-wash: #3B1219; --kept-wash: #132D21; --amber-wash: #302008; --info-wash: #0D2847;
     --grain-op: .07; color-scheme: dark;
   }
 }
 :root[data-theme="dark"] {
-  --bg: #0D0C0B; --bg-2: #151412; --card: #181615;
-  --fg: #EEEAE4; --fg-2: #A39C96; --mute: #77706B; --line: #2A2724;
-  --glass: rgba(34,31,29,.45); --glass-hi: rgba(255,255,255,.06);
-  --tex-hi: #3A3532; --tex-lo: #0E0D0C; --dark-line: #2A2724;
-  --seal: #E2482B; --kept: #5BAF78; --amber: #E8A15A; --idle: #3A3633;
-  --seal-wash: rgba(226,72,43,.1); --kept-wash: rgba(91,175,120,.1); --amber-wash: rgba(232,161,90,.1);
+  --bg: #09090B; --bg-2: #18181B; --card: #111113;
+  --fg: #FAFAFA; --fg-2: #A1A1AA; --mute: #8B8B94; --line: #27272A;
+  --glass: rgba(24,24,27,.5); --glass-hi: rgba(255,255,255,.06);
+  --tex-hi: #3F3F46; --tex-lo: #09090B; --dark-line: #27272A;
+  --seal: #EC5D5E; --kept: #33B074; --amber: #FFC53D; --info: #70B8FF; --idle: #3F3F46;
+  --seal-wash: #3B1219; --kept-wash: #132D21; --amber-wash: #302008; --info-wash: #0D2847;
   --grain-op: .07; color-scheme: dark;
 }
 
@@ -50,6 +50,8 @@
   --color-kept: var(--kept);
   --color-amber: var(--amber);
   --color-idle: var(--idle);
+  --color-info: var(--info);
+  --color-info-wash: var(--info-wash);
   --color-seal-wash: var(--seal-wash);
   --color-kept-wash: var(--kept-wash);
   --color-amber-wash: var(--amber-wash);
@@ -88,7 +90,7 @@
     :root:not([data-theme="light"]) .theme-sun { display: none; }
     :root:not([data-theme="light"]) .theme-moon { display: inline; }
   }
-  .live-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--seal); animation: live 1.4s ease-in-out infinite; }
+  .live-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--info); animation: live 1.4s ease-in-out infinite; }
   @keyframes live { 50% { opacity: .25; } }
   @media (prefers-reduced-motion: reduce) { .live-dot, .logo-mark { animation: none; transition: none; } }
 }

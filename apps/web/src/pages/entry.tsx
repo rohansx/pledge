@@ -37,7 +37,7 @@ export function LoginPage() {
       <form onSubmit={(event) => void submit(event)} className="w-full max-w-[400px] rounded-xl border border-line bg-card p-7 shadow-sm">
         <p><Wordmark /></p>
         <h1 className="mt-5 text-2xl font-semibold tracking-[-.03em]">Sign in</h1>
-        <p className="mt-2 text-sm text-ink-2">GitHub sign-in is not set up yet. Until it is, the dashboard opens with the shared access token.</p>
+        <p className="mt-2 text-sm text-ink-2">Sign in with your team's access token, the PLEDGE_API_TOKEN the command line publishes with.</p>
         <label className="mt-5 block">
           <span className="text-[13px] font-medium">Access token</span>
           <input type="password" autoComplete="current-password" required value={token} onChange={(event) => setValue(event.target.value)} className="mt-1.5 h-9 w-full rounded-md border border-line bg-card px-3 font-mono text-[13px] shadow-xs" />
@@ -58,7 +58,7 @@ export function ReposPage() {
     <div className="min-h-screen">
       <TopBar />
       <main className="mx-auto max-w-[1040px] px-4 pb-24 pt-10 sm:px-8">
-        <PageTitle title="Repos" lede="Every repo that has had a scan. Connecting a repo through GitHub is not built yet: a repo appears here when the command line publishes its first run." />
+        <PageTitle title="Repos" lede="Every repo that has published a scan." />
         {repos.isPending ? <Loading what="repos" /> : null}
         {repos.isError ? <ErrorNote error={repos.error} retry={() => void repos.refetch()} /> : null}
         {repos.data?.length === 0 ? (
@@ -70,7 +70,7 @@ export function ReposPage() {
           {repos.data?.map((repo) => (
             <Link key={repo.id} to="/r/$repoId/overview" params={{ repoId: repo.id }} className="flex flex-col gap-3 rounded-xl border border-line bg-card p-5 shadow-xs transition-colors hover:border-mute">
               <span className="flex items-center gap-3">
-                <span aria-hidden="true" className="grid size-9 place-items-center rounded-lg bg-seal text-sm font-semibold uppercase text-white">{repo.name[0]}</span>
+                <span aria-hidden="true" className="grid size-9 place-items-center rounded-lg bg-ink text-sm font-semibold uppercase text-paper">{repo.name[0]}</span>
                 <span className="min-w-0 flex-1">
                   <span className="block truncate text-[15px] font-semibold">{repo.name}</span>
                   <span className="block text-xs text-mute">last run {when(repo.lastActivity)}</span>

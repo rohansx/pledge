@@ -36,7 +36,7 @@ export function SettingsPage() {
       <PageTitle title="Settings" />
       <div className="mt-6 overflow-hidden rounded-xl border border-line bg-card shadow-xs">
         <Block title="Repo">
-          <p><b className="font-medium text-ink">{repo?.name ?? repoId}</b>. It was created when the command line first published a run under this name. Connecting it to a GitHub repository, and choosing a branch to track, needs the GitHub App, which is not set up.</p>
+          <p><b className="font-medium text-ink">{repo?.name ?? repoId}</b>. Created when the command line first published a run under this name.</p>
         </Block>
         <Block title="Sending runs here">
           <p>The dashboard shows what the command line sends. With the token in <code>PLEDGE_API_TOKEN</code>:</p>
@@ -46,9 +46,6 @@ export function SettingsPage() {
         <Block title="Account">
           <p>Signed in as <b className="font-medium text-ink">{me.data?.user.name ?? "…"}</b>: one token shared by everyone who has it. Personal accounts and team roles come with GitHub sign-in.</p>
           <p><Button onClick={() => { setToken(null); void navigate({ to: "/login" }); }}>Sign out of this browser</Button></p>
-        </Block>
-        <Block title="Not built yet">
-          <p>Boot recipe and fake services for the repo, budgets, notifications, team members, and deleting snapshots or run evidence. Budgets are fixed in the runner today, and evidence stays on the machine that ran the scan.</p>
         </Block>
       </div>
     </>
