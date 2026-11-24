@@ -10,20 +10,6 @@ const title = 'Pledge — find the bugs your tests miss';
 const description =
   'Retries, duplicate webhooks and race conditions quietly charge customers twice, oversell stock and ship orders twice. Pledge finds them in a sandbox and shows you exactly how to replay them.';
 
-// The 40 runs of one rule; the same seven break everywhere on the page (hero comment, step 3, Hairline figure).
-const BROKEN = new Set([3, 9, 14, 21, 26, 33, 38]);
-const runs = Array.from({ length: 40 }, (_, i) => BROKEN.has(i + 1));
-
-// Step diagrams (trusted static SVG), styled under .diag in global.css.
-const codeLines = [70, 52, 80, 44, 62].map((w, i) => `<path class="ln" d="M30 ${54 + i * 13}h${w}"/>`).join('');
-const runGrid = runs.map((bad, i) =>
-  `<rect class="${bad ? 'no' : 'ok'}" x="${63 + (i % 10) * 18}" y="${44 + Math.floor(i / 10) * 18}" width="13" height="13" rx="1"/>`).join('');
-const ruleDiag = `<rect class="bx" x="20" y="22" width="110" height="110" rx="2"/><text class="m" x="30" y="40">checkout.ts</text>${codeLines}
-  <path class="ln" d="M140 77h34" marker-end="url(#arr)"/><text class="m" x="157" y="68" text-anchor="middle">reads</text>
-  <rect class="bx hi" x="182" y="47" width="100" height="60" rx="2"/><text class="m" x="192" y="64">RULE</text>
-  <text class="t" x="192" y="82">One charge</text><text class="t" x="192" y="97">per payment.</text>`;
-const proofDiag = `<text class="t" x="63" y="32">One charge per payment.</text>${runGrid}
-  <text class="ft" x="63" y="134">broke on 7 of 40 runs</text><text class="m" x="238" y="134" text-anchor="end">replay ↗</text>`;
 
 const bugs = [
   { k: 'Double charge', q: 'One charge per payment.', p: 'A retry charges the card again.', fault: 'retry' },
@@ -116,25 +102,24 @@ const trust = [
         <div class="pillars">
           <div class="pillar glass fade">
             <div class="art">
-              <svg class="diag" viewBox="0 0 300 150" aria-hidden="true">
-                <defs><marker id="arr" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0l8 4-8 4" fill="none" stroke="currentColor" /></marker></defs>
-                <Fragment set:html={ruleDiag} />
-              </svg>
+              <div class="hl" id="fig-rules"></div>
+              <output class="hl-read" id="fig-rules-read" aria-live="polite"></output>
             </div>
             <div class="n">01</div><h3>Write the rules</h3>
             <p>Claude reads your code and writes the rules your data must keep, like “one charge per payment”.</p>
           </div>
           <div class="pillar glass fade">
-            <div class="art forks-art">
-              <div id="forks"></div>
-              <output id="forks-read" aria-live="polite"></output>
+            <div class="art">
+              <div class="hl" id="forks"></div>
+              <output class="hl-read" id="forks-read" aria-live="polite"></output>
             </div>
             <div class="n">02</div><h3>Break it on purpose</h3>
-            <p>Your app runs 40 times in a sandbox, each run hit with retries, duplicate webhooks, races and restarts. Point at the blocks.</p>
+            <p>Your app runs 40 times in a sandbox, each run hit with retries, duplicate webhooks, races and restarts.</p>
           </div>
           <div class="pillar glass fade">
             <div class="art">
-              <svg class="diag" viewBox="0 0 300 150" aria-hidden="true"><Fragment set:html={proofDiag} /></svg>
+              <div class="hl" id="fig-proof"></div>
+              <output class="hl-read" id="fig-proof-read" aria-live="polite"></output>
             </div>
             <div class="n">03</div><h3>Get proof</h3>
             <p>When a rule breaks, your pull request fails with the runs, the cause and the exact command to replay it.</p>
