@@ -82,7 +82,7 @@
     linear-gradient(var(--fg),var(--fg)) 0 100%/9px 1px no-repeat, linear-gradient(var(--fg),var(--fg)) 0 100%/1px 9px no-repeat,
     linear-gradient(var(--fg),var(--fg)) 100% 100%/9px 1px no-repeat, linear-gradient(var(--fg),var(--fg)) 100% 100%/1px 9px no-repeat; }
   .logo-mark { flex: none; overflow: visible; transition: transform .9s cubic-bezier(.65,0,.35,1); }
-  a:hover > .logo-mark { transform: rotate(60deg); } /* one arm's step, as on the landing page */
+  a:hover .logo-mark { transform: rotate(60deg); } /* one arm's step, as on the landing page */
   .theme-moon { display: none; }
   :root[data-theme="dark"] .theme-sun { display: none; }
   :root[data-theme="dark"] .theme-moon { display: inline; }

@@ -4,7 +4,7 @@ import { useState, type FormEvent } from "react";
 
 import { api, setToken } from "../api.ts";
 import { TopBar } from "../components/layout.tsx";
-import { Button, Empty, ErrorNote, Loading, Mark, PageTitle, RunStrip, VerdictBadge } from "../components/ui.tsx";
+import { Button, Empty, ErrorNote, Loading, PageTitle, RunStrip, VerdictBadge, Wordmark } from "../components/ui.tsx";
 import { when } from "../format.ts";
 import { reposQuery } from "../queries.ts";
 import type { Me } from "../types.ts";
@@ -35,7 +35,7 @@ export function LoginPage() {
   return (
     <div className="grid min-h-screen place-items-center p-4">
       <form onSubmit={(event) => void submit(event)} className="w-full max-w-[440px] rounded-md border border-line bg-glass p-7 shadow-[inset_0_1px_0_var(--glass-hi)]">
-        <p className="flex items-center gap-2 font-mono text-[15px] font-semibold"><Mark />pledge</p>
+        <p><Wordmark /></p>
         <h1 className="mt-5 text-2xl font-semibold tracking-[-.03em]">Sign in</h1>
         <p className="mt-2 text-sm text-ink-2">GitHub sign-in is not set up yet. Until it is, the dashboard opens with the shared access token.</p>
         <label className="mt-5 block">

@@ -3,7 +3,7 @@ import { Link, Outlet, useNavigate, useParams } from "@tanstack/react-router";
 
 import { setToken } from "../api.ts";
 import { meQuery, overviewQuery } from "../queries.ts";
-import { Button, Mark } from "./ui.tsx";
+import { Button, Wordmark } from "./ui.tsx";
 
 export function toggleTheme(): void {
   const root = document.documentElement;
@@ -30,8 +30,8 @@ export function TopBar({ repoId }: { repoId?: string }) {
   const navigate = useNavigate();
   return (
     <header className="sticky top-0 z-40 flex h-14 items-center gap-2.5 border-b border-line bg-paper/80 px-3 backdrop-blur-md sm:gap-4 sm:px-6">
-      <Link to="/repos" aria-label="Pledge, all repos" className="flex items-center gap-2 font-mono text-[15px] font-semibold tracking-[.02em]">
-        <Mark />pledge
+      <Link to="/repos" aria-label="Pledge, all repos" className="group">
+        <Wordmark />
       </Link>
       {repoId && me.data ? (
         <label className="flex items-center gap-2">

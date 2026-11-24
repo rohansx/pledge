@@ -153,6 +153,16 @@ export function ErrorNote({ error, retry }: { error: unknown; retry?: () => void
   );
 }
 
-export function Mark({ size = 20 }: { size?: number }) {
-  return <svg className="logo-mark" width={size} height={size} aria-hidden="true"><use href="#mark" /></svg>;
+/** The landing page's wordmark: the name with the asterisk as a superscript, in the seal red. */
+export function Wordmark() {
+  return (
+    <span className="inline-flex items-start text-[19px] font-semibold leading-none tracking-[-.035em]">
+      pledge
+      <sup className="-mt-px ml-px leading-[0] text-seal">
+        <svg className="logo-mark" width={11} height={11} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.6} strokeLinecap="round" aria-hidden="true">
+          <path d="M12 4v16" /><path d="M5.1 8l13.8 8" /><path d="M5.1 16L18.9 8" />
+        </svg>
+      </sup>
+    </span>
+  );
 }
