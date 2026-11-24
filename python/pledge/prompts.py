@@ -149,11 +149,41 @@ codebase would agree must hold, stated so that a check on the data can break it.
  "faults": [{"kind": "retry", "target": "app POST /showings/*/bookings", "params": {"rate": 0.5}}]}
 ```
 
-Only `kind: "retry"` exists so far. The request reaches the upstream and is processed, then the reply is \
-replaced by a 5xx (`params.status`, default 504), so the caller sends the request again. The retry of the \
-same request is let through. `target` is `ROUTE METHOD /path`, where ROUTE is a route name from the boot \
-recipe and the path may use `*`. `params.rate` is the share of matching requests affected, from 0 to 1. \
-Write at least one faults file that puts pressure on the pledges you wrote.
+`target` is `ROUTE METHOD /path`, where ROUTE is a route name from the boot recipe and the path may use \
+`*`. `params.rate` is the share of matching requests affected, from 0 to 1 (default 1); which ones is \
+fixed by the run's seed. A request a client sends again unchanged is not a new request and gets no fault. \
+A file may list several faults, of any kinds; every fault that fires on a request is applied to it.
+
+There are five kinds. Choose by what happens to this application in production:
+
+- `retry`: the request reaches the upstream and is processed, then the reply is replaced by a 5xx \
+(`params.status`, default 504), so the caller sends the request again. It only does anything where the \
+caller retries: a journey that retries, or a client inside the app that does.
+- `duplicate`: the caller gets the real reply once, and the proxy delivers the same request to the \
+upstream a second time. This is at-least-once delivery, and needs no retrying client: use it on webhook \
+receivers, queue consumers and any endpoint a provider or a job runner calls. `params.delay_ms` (default \
+0) is how long after the first reply the second delivery is sent; `params.mode: "concurrent"` sends it \
+while the first is still in flight instead.
+- `race`: the request is sent to the upstream twice at the same instant and the caller gets whichever \
+reply comes first. This is a double click, or two workers taking the same job. It finds check-then-act \
+code (read a balance, a stock count or a status, then write) that a guard against repeats does not protect.
+- `delay`: the upstream does the work, then the reply is held for `params.ms` (required, up to 60000). Put \
+it on a dependency's route to make the app's own client time out, or on the app's route with a journey \
+that gives up waiting and tries again.
+- `restart`: `params.service`, a service name from the boot recipe, is killed without warning and \
+started again while the matching request is in flight; traffic waits until its health check passes. To \
+kill the app in the middle of its work, target the call it makes to a dependency in the middle of that \
+work, for example `{"kind": "restart", "target": "payments POST /v1/charges", "params": {"service": \
+"app", "rate": 0.3}}`: the provider takes the charge and the app dies before it can record it. The \
+client of the killed service sees a 502 and should try again, as a real client would. A restart is slow, \
+so it happens once per run unless `params.max` says more; `params.after_ms` waits before the kill. The \
+service's whole process group is killed, so use it only on a service the recipe starts as a process.
+
+A second delivery never reaches the journey, so nothing needs adding to `expected_statuses` for \
+`duplicate` and `race`; for `restart` add 502 to the operations that can be in flight. Write at least one \
+faults file that puts pressure on the pledges you wrote, and prefer the kind that matches how each route \
+is really called: `duplicate` for webhooks, `race` for anything guarded by a read, `restart` for work \
+done in several steps.
 
 ## Checking your work
 

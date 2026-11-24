@@ -4,6 +4,7 @@
     pledge run APP_DIR --scenario NAME [--faults FILE] [--seed N] [--runs-dir DIR]
     pledge verdict APP_DIR RUN_DIR [RUN_DIR ...]
     pledge down APP_DIR
+    pledge restart APP_DIR SERVICE
     pledge scan APP_DIR --scenario NAME --faults FILE [--seeds N] [--env KEY=VALUE ...]
     pledge author APP_DIR --out DIR
     pledge publish APP_DIR RUN_DIR [RUN_DIR ...] [--faults FILE] [--app NAME]
@@ -52,6 +53,10 @@ def _parser() -> argparse.ArgumentParser:
 
     down = commands.add_parser("down", help="stop what `boot` started")
     down.add_argument("app_dir", type=Path)
+
+    restart = commands.add_parser("restart", help="kill one service as a crash would and start it again (the proxy's `restart` fault calls this)")
+    restart.add_argument("app_dir", type=Path)
+    restart.add_argument("service")
 
     scan = commands.add_parser("scan", help="boot the app in an E2B sandbox, fork it per seed, run and judge")
     scan.add_argument("app_dir", type=Path)
@@ -113,6 +118,9 @@ def main(argv: list[str] | None = None) -> int:
             return 0
         if args.command == "down":
             print(json.dumps(local.down(args.app_dir)))
+            return 0
+        if args.command == "restart":
+            print(json.dumps(local.restart_service(args.app_dir, args.service)))
             return 0
         if args.command == "run":
             print(json.dumps(local.run(args.app_dir, args.scenario, args.faults, args.seed, args.runs_dir)))

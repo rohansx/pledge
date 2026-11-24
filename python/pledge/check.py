@@ -83,8 +83,13 @@ def check_author(app_dir: Path, runs_dir: Path) -> dict:
 
     for path in sorted((app_dir / ".pledge" / "faults").glob("*.json")):
         try:
-            parse_plan({"schema_version": 1, "seed": 0, "faults": json.loads(path.read_text())["faults"]})
-        except (PlanError, ValueError, KeyError, TypeError) as exc:
+            plan = parse_plan({"schema_version": 1, "seed": 0, "faults": json.loads(path.read_text())["faults"]})
+            # Said here, while the author can still fix it; `pledge run` would only refuse it at scan time.
+            services = {service["name"] for service in local.load_recipe(app_dir)["services"]}
+            for fault in plan.faults:
+                if fault.kind == "restart" and fault.service not in services:
+                    problems.append(f"faults file {path.name}: faults[{fault.index}] restarts {fault.service!r}, which {local.BOOT_FILE} does not list as a service")
+        except (PlanError, local.BootError, ValueError, KeyError, TypeError) as exc:
             problems.append(f"faults file {path.name}: {exc}")
 
     baseline = []

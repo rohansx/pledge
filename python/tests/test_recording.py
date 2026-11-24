@@ -64,3 +64,27 @@ def test_no_recording_without_a_failure_or_without_journey_keys(tmp_path):
     (tmp_path / "result.json").write_text(json.dumps({"seed": 1, "assertions": [{"id": "a", "status": "fail"}]}))
     (tmp_path / "pledge" / "proxy_traffic.json").write_text(json.dumps([entry(1, None, "/x", fault=0)]))
     assert recording(tmp_path, "a", "x") is None
+
+
+def test_each_kind_of_fault_is_told_in_plain_words(tmp_path):
+    traffic = [
+        entry(0, "j-1", "/hooks", fault=0) | {"kinds": ["duplicate"]},
+        entry(5, "j-1", "/hooks", returned=None, fault=0) | {"kinds": ["duplicate"], "copy": True},
+        entry(10, "j-1", "/pay", fault=1) | {"kinds": ["race"]},
+        entry(10, "j-1", "/pay", upstream=409, returned=None, fault=1) | {"kinds": ["race"], "copy": True},
+        entry(20, "j-1", "/slow", returned=504, fault=2) | {"kinds": ["delay", "retry"], "delay_ms": 800},
+        entry(30, "j-1", "/charge", upstream=None, returned=502, fault=3) | {"kinds": ["restart"], "service": "app"},
+        entry(40, "j-1", "/gone", upstream=None, returned=502),
+    ]
+    rec = recording(run_dir(tmp_path, {"id": "a", "status": "fail"}, traffic), "a", "x")
+    told = [step["text"] for step in rec["steps"][:-1]]
+
+    assert told[0] == "POST /hooks: the request will be delivered a second time, as a provider redelivering a webhook would. The client got 201."
+    assert told[1] == "POST /hooks: the same request was delivered a second time, though nobody sent it twice. This time the app answered 201; nobody was waiting for that reply."
+    assert "sent twice at the same instant" in told[2]
+    assert "at the same instant as the first. This time the app answered 409" in told[3]
+    assert told[4] == "POST /slow: the reply was held for 800 ms; the app did the work and answered 201, but the reply was lost. The client got 504."
+    assert told[5] == "POST /charge: app was killed and started again while this request was in flight. The client got 502."
+    assert told[6] == "POST /gone → app unreachable (502)"
+    assert [step["actor"] for step in rec["steps"]] == ["fault"] * 6 + ["client", "check"]
+    assert rec["faults_hit"] == 4  # a second delivery is part of its fault, not another one

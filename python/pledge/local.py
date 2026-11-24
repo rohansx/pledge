@@ -16,11 +16,14 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
+from pledge.faults import MAX_HOLD_MS, PlanError, engine_kind, parse_plan
 from pledge.proxy import DEFAULT_ADMIN_PORT
 
 BOOT_FILE = "pledge.boot.json"
 STATE_DIR = ".pledge-run"
+ENV_FILE = "env.json"  # the extra environment `boot` was given, so a restarted service gets it again
 HEALTH_TIMEOUT_SECONDS = 90
+RESTART_COMMAND_TIMEOUT_SECONDS = 120
 LOG_TAIL_LINES = 300
 ADMIN_URL = f"http://127.0.0.1:{DEFAULT_ADMIN_PORT}"
 BROWSER_STEPS = "browser.cjs"  # optional, next to a scenario's journeys.js
@@ -55,10 +58,11 @@ def _http(method: str, url: str, body: object = None, timeout: float = 10) -> di
         return json.load(response)
 
 
-def _wait_healthy(name: str, url: str, process: subprocess.Popen, log_path: Path) -> None:
+def _wait_healthy(name: str, url: str, process: subprocess.Popen | None, log_path: Path) -> None:
+    """`process` is None for a service this module did not spawn (one the recipe's own `restart` command runs)."""
     deadline = time.monotonic() + HEALTH_TIMEOUT_SECONDS
     while time.monotonic() < deadline:
-        if process.poll() is not None:
+        if process is not None and process.poll() is not None:
             raise BootError(f"{name} exited with status {process.returncode}; see {log_path}")
         try:
             _http("GET", url, timeout=2)
@@ -68,17 +72,29 @@ def _wait_healthy(name: str, url: str, process: subprocess.Popen, log_path: Path
     raise BootError(f"{name} was not healthy at {url} after {HEALTH_TIMEOUT_SECONDS}s; see {log_path}")
 
 
-def _spawn(name: str, command: list[str], cwd: Path, env: dict[str, str], state: Path) -> tuple[subprocess.Popen, Path]:
+def _wait_gone(url: str, seconds: float = 10) -> None:
+    """Until nothing answers at `url`: its port is free once the old process stops answering."""
+    deadline = time.monotonic() + seconds
+    while time.monotonic() < deadline:
+        try:
+            _http("GET", url, timeout=1)
+            time.sleep(0.1)
+        except (urllib.error.URLError, OSError, ValueError):
+            return
+
+
+def _spawn(name: str, command: list[str], cwd: Path, env: dict[str, str], state: Path, log_mode: str = "w") -> tuple[subprocess.Popen, Path]:
     log_path = state / f"{name}.log"
     # A recipe says `python3`; use the interpreter that has pledge installed, which may be a virtualenv's.
     command = [sys.executable, *command[1:]] if command[0] == "python3" else command
-    process = subprocess.Popen(command, cwd=cwd, env=env, stdout=log_path.open("w"), stderr=subprocess.STDOUT, start_new_session=True)
+    process = subprocess.Popen(command, cwd=cwd, env=env, stdout=log_path.open(log_mode), stderr=subprocess.STDOUT, start_new_session=True)
     return process, log_path
 
 
 def _start_proxy(recipe: dict, app_dir: Path, state: Path) -> int:
     routes = [f"{name}={route['listen']}={route['upstream']}" for name, route in recipe["routes"].items()]
-    command = ["python3", "-m", "pledge.proxy", *(arg for route in routes for arg in ("--route", route))]
+    # --app-dir is how the proxy gets a service restarted: it runs `pledge restart` on this directory.
+    command = ["python3", "-m", "pledge.proxy", "--app-dir", str(app_dir), *(arg for route in routes for arg in ("--route", route))]
     process, log_path = _spawn("proxy", command, app_dir, dict(os.environ), state)
     _wait_healthy("proxy", f"{ADMIN_URL}/healthz", process, log_path)
     return process.pid
@@ -91,15 +107,48 @@ def restart_proxy(app_dir: Path) -> None:
     state = app_dir / STATE_DIR
     pids = json.loads((state / "pids.json").read_text())
     _kill({"proxy": pids["proxy"]})
-    deadline = time.monotonic() + 10
-    while time.monotonic() < deadline:  # its ports are free once the old one stops answering
-        try:
-            _http("GET", f"{ADMIN_URL}/healthz", timeout=1)
-            time.sleep(0.1)
-        except (urllib.error.URLError, OSError, ValueError):
-            break
+    _wait_gone(f"{ADMIN_URL}/healthz")
     pids["proxy"] = _start_proxy(load_recipe(app_dir), app_dir, state)
     (state / "pids.json").write_text(json.dumps(pids))
+
+
+def restart_service(app_dir: Path, name: str) -> dict:
+    """Kill one service of a booted app the way a crash would (SIGKILL, no chance to finish), start it again
+    and return once it is healthy. The `restart` fault's control hook: the proxy runs `pledge restart`.
+
+    A service this module spawned is killed by process group, so everything its command started in that
+    group dies with it (a start script's database included). A service that lives elsewhere, such as a
+    container the command started detached, survives a kill of the command; its recipe entry then needs a
+    `restart` command of its own, for example ["sh", "-c", "docker kill db && docker start db"], which is run
+    instead. ponytail: without that field a container is not restarted; teach this docker when recipes use it."""
+    app_dir = app_dir.resolve()
+    state = app_dir / STATE_DIR
+    service = next((service for service in load_recipe(app_dir)["services"] if service["name"] == name), None)
+    if service is None:
+        raise BootError(f"{BOOT_FILE} has no service named {name!r}")
+    pids_path = state / "pids.json"
+    if not pids_path.exists():
+        raise BootError(f"not booted (no {pids_path})")
+    pids = json.loads(pids_path.read_text())
+    log_path = state / f"{name}.log"
+    env_path = state / ENV_FILE
+    env = {**os.environ, **service.get("env", {}), **(json.loads(env_path.read_text()) if env_path.exists() else {})}
+    process = None
+    if "restart" in service:
+        try:
+            done = subprocess.run(service["restart"], cwd=app_dir, env=env, capture_output=True, text=True, timeout=RESTART_COMMAND_TIMEOUT_SECONDS)
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            raise BootError(f"{name}: restart command failed: {exc}") from None
+        if done.returncode:
+            raise BootError(f"{name}: restart command exited {done.returncode}: {(done.stderr or done.stdout)[-300:]}")
+    else:
+        _kill({name: pids[name]}, signal.SIGKILL)
+        _wait_gone(service["health"])
+        process, log_path = _spawn(name, service["command"], app_dir, env, state, log_mode="a")  # keep what it logged before it died
+        pids[name] = process.pid
+        pids_path.write_text(json.dumps(pids))
+    _wait_healthy(name, service["health"], process, log_path)
+    return {"restarted": name}
 
 
 def boot(app_dir: Path, extra_env: dict[str, str]) -> dict:
@@ -110,6 +159,9 @@ def boot(app_dir: Path, extra_env: dict[str, str]) -> dict:
     if (state / "pids.json").exists():
         raise BootError(f"already booted (found {state / 'pids.json'}); run `pledge down` first")
     state.mkdir(exist_ok=True)
+    env_path = state / ENV_FILE
+    env_path.touch(mode=0o600)  # may hold the customer's secrets; they are in the services' environment anyway
+    env_path.write_text(json.dumps(extra_env))
     pids: dict[str, int] = {}
     try:
         for service in recipe["services"]:
@@ -120,15 +172,16 @@ def boot(app_dir: Path, extra_env: dict[str, str]) -> dict:
         pids["proxy"] = _start_proxy(recipe, app_dir, state)
     except BaseException:
         _kill(pids)
+        env_path.unlink(missing_ok=True)
         raise
     (state / "pids.json").write_text(json.dumps(pids))
     return {"services": pids, "target": recipe["target"]}
 
 
-def _kill(pids: dict[str, int]) -> None:
+def _kill(pids: dict[str, int], how: signal.Signals = signal.SIGTERM) -> None:
     for pid in pids.values():
         try:
-            os.killpg(pid, signal.SIGTERM)
+            os.killpg(pid, how)
         except ProcessLookupError:
             pass
 
@@ -138,6 +191,7 @@ def down(app_dir: Path) -> dict:
     pids = json.loads(path.read_text()) if path.exists() else {}
     _kill(pids)
     path.unlink(missing_ok=True)
+    path.with_name(ENV_FILE).unlink(missing_ok=True)
     return {"stopped": sorted(pids)}
 
 
@@ -149,13 +203,21 @@ def run(app_dir: Path, scenario: str, faults_file: Path | None, seed: int, runs_
     recipe = load_recipe(app_dir)
     faults = json.loads(faults_file.read_text())["faults"] if faults_file else []
     plan = {"schema_version": 1, "seed": seed, "faults": faults}
+    try:
+        restarts = {fault.service for fault in parse_plan(plan).faults if fault.kind == "restart"}
+    except PlanError as exc:
+        raise RuntimeError(f"fault plan: {exc}") from None
+    unknown = restarts - {service["name"] for service in recipe["services"]}
+    if unknown:
+        raise RuntimeError(f"fault plan restarts {sorted(unknown)}, which {BOOT_FILE} does not list as a service")
     _http("PUT", f"{ADMIN_URL}/plan", plan)  # the proxy validates it; a plan it cannot apply stops the run here
     for url in recipe.get("reset", []):
         _http("POST", url, {})
 
     with tempfile.TemporaryDirectory() as tmp:
         plan_path = Path(tmp) / "fault_plan.json"
-        plan_path.write_text(json.dumps(plan))
+        # The engine only records the plan, under its own names for two of the kinds.
+        plan_path.write_text(json.dumps({**plan, "faults": [{**fault, "kind": engine_kind(fault["kind"])} for fault in faults]}))
         command = [
             sys.executable, "-m", "litetraffic", "verify", str(app_dir / ".pledge" / "scenarios" / scenario),
             "--target", recipe["target"], "--seed", str(seed), "--fault-plan", str(plan_path),
@@ -170,7 +232,7 @@ def run(app_dir: Path, scenario: str, faults_file: Path | None, seed: int, runs_
         raise RuntimeError(f"engine refused the run: {result.get('error', result)}")
 
     run_dir = runs_dir.resolve() / result["run_id"]
-    log = _http("GET", f"{ADMIN_URL}/log")["data"]
+    log = _http("GET", f"{ADMIN_URL}/log", timeout=MAX_HOLD_MS / 1000 + 30)["data"]  # it waits for late second deliveries
     injected = log["injected"]
     # Written after the engine sealed the run, so it is not in artifacts.json; kept apart under pledge/.
     (run_dir / "pledge").mkdir(exist_ok=True)
@@ -181,6 +243,9 @@ def run(app_dir: Path, scenario: str, faults_file: Path | None, seed: int, runs_
     for service_log in (app_dir / STATE_DIR).glob("*.log"):
         lines = service_log.read_text(errors="replace").splitlines()[-LOG_TAIL_LINES:]
         (run_dir / "pledge" / "logs" / service_log.name).write_text("\n".join(lines) + "\n")
+    failed = [entry for entry in injected if entry["kind"] == "restart" and entry.get("error")]
+    if failed:  # the rest of the run hit a dead service: what it shows is not evidence about the app
+        raise RuntimeError(f"{failed[0]['service']} did not come back after the restart fault: {failed[0]['error']}")
     _record_browser(app_dir / ".pledge" / "scenarios" / scenario / BROWSER_STEPS, run_dir)
     return {"run_id": result["run_id"], "run_dir": str(run_dir), "seed": seed, "verdict": result["verdict"], "faults_injected": len(injected)}
 

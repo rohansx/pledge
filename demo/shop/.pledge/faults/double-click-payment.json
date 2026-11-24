@@ -1,0 +1,4 @@
+{
+  "description": "Half of the payment requests reach the shop twice at the same instant, as a double click or two workers taking one job.",
+  "faults": [{ "kind": "race", "target": "app POST /payments", "params": { "rate": 0.5 } }]
+}

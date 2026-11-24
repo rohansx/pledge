@@ -66,8 +66,9 @@ The fault lets half of the payment requests reach the app and then loses the rep
 
 ## What this does not show
 
-- **Only the `retry` fault exists.** Duplicate delivery, same-instant requests, reorder,
-  delay and restart are not built.
+- **Only the `retry` fault existed at the time.** Duplicate delivery, same-instant requests,
+  delay and restart were added later (see [sandbox design](./sandbox-design.md#fault-proxy));
+  reorder is not built.
 - **No direct database check.** The pledge reads the fake provider's log. The read-only
   state reader for the app's own database is not built, so Q-5 is still open.
 - **The app is a toy.** SQLite, one process, no dependencies to install, no Compose file.

@@ -1,0 +1,4 @@
+{
+  "description": "The shop is killed once, right after the payment provider took a charge and before the shop could record it.",
+  "faults": [{ "kind": "restart", "target": "payments POST /v1/charges", "params": { "rate": 0.3, "service": "app" } }]
+}

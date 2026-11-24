@@ -33,15 +33,60 @@ through it. A fault plan is a seed plus a list of faults:
 
 | Fault | What the proxy does | Bug it exposes |
 |---|---|---|
-| Retry | Times out the response so the caller sends the request again | Double charge, duplicate order |
-| Duplicate delivery | Sends the same webhook twice | Work done twice |
-| Same-instant requests | Holds two requests and releases them together | Oversold stock, double spend of credits |
+| Retry (`retry`) | Lets the upstream do the work, then replaces the reply with a 5xx so the caller sends the request again | Double charge, duplicate order |
+| Duplicate delivery (`duplicate`) | Returns the real reply, and delivers the same request a second time | Work done twice by a webhook or queue consumer |
+| Same-instant requests (`race`) | Sends the one request twice at the same instant and returns the first reply | Oversold stock, double spend of credits |
+| Delay (`delay`) | Holds the reply | Timeouts handled badly, overlapping retries |
+| Restart (`restart`) | Has one service killed and started again while the request is in flight | Half-finished writes |
 | Reorder | Delivers two events in the wrong order | Wrong final state |
-| Delay | Slows one dependency | Timeouts handled badly |
-| Restart | Asks the supervisor to kill and restart the app mid-request | Half-finished writes |
 
-Only `retry` is built so far. Its exact behaviour and parameters are in
-[phase-1](./phase-1.md).
+All but reorder are built ([`faults.py`](../python/pledge/faults.py), [`proxy.py`](../python/pledge/proxy.py)).
+
+Every fault has a `target`, `ROUTE METHOD /path` with wildcards in the path, and a `rate` from 0
+to 1. Each fault counts the new requests its target covers, and the seed, the fault's place in
+the plan and that count decide whether it fires. So a seed replays the same pattern, and adding
+a fault to a plan does not move the others. A request the client repeats unchanged is not a new
+request. When several faults fire on one request all are applied, one per kind.
+
+| Kind | `params` besides `rate` |
+|---|---|
+| `retry` | `status`, a 5xx, default 504 |
+| `duplicate` | `delay_ms` after the first reply, default 0; `mode`: `after` (default) or `concurrent`, which sends the second while the first is in flight |
+| `race` | none |
+| `delay` | `ms`, required, 1 to 60000 |
+| `restart` | `service`, required, a service of the boot recipe; `after_ms` before the kill, default 0; `max` restarts per run, default 1 |
+
+LiteTraffic records the plan and calls two kinds `duplicate_delivery` and `same_instant`. The
+proxy accepts both spellings and `pledge run` hands the engine its own.
+
+**Why `race` sends one request twice.** The other model holds two different requests and
+releases them together. A journey sends its requests one after another, so two of the same
+journey are never in flight to be held, and two from different journeys act on different
+orders or accounts, which the scenario's ordinary concurrency already covers. A double click
+and two workers taking one job are both the same request arriving twice at one instant. That
+is also deterministic to inject: no waiting for a partner that may not come.
+
+**How a restart works.** The proxy does not own the processes, so it cannot restart one. It is
+started with `--app-dir` and runs `pledge restart APP_DIR SERVICE`
+([`local.restart_service`](../python/pledge/local.py)), which reads `.pledge-run/pids.json`,
+sends SIGKILL to the service's process group, starts the recipe's command again with the same
+environment, and returns when the health check passes. Meanwhile the proxy holds every new
+request. Requests already inside the killed service lose their connection and get a 502, as in
+a real crash. The kill comes `after_ms` after the matching request was sent on; for an exact
+moment, target the call the service makes to a dependency in the middle of its work: the
+dependency does its part, and the service is dead before the reply reaches it. The restart, how
+long it took and any error are in the run's `pledge/proxy_injected.json`; a service that does
+not come back fails the run rather than producing a verdict.
+
+Limits: the kill takes the whole process group, so a start script that also launched the
+database loses that too. A container the command started detached is not in the group and
+survives; give that service a `restart` command in the recipe, for example
+`["sh", "-c", "docker kill db && docker start db"]`, and it is run instead of the kill.
+
+**What is recorded.** `pledge/proxy_injected.json` has one entry per injected fault.
+`pledge/proxy_traffic.json` has every request with `kinds`, the faults applied to it, and a
+second delivery as its own line with `copy: true` and no returned status, since nobody received
+that reply. The journey recording tells each in plain words.
 
 ## Fake services
 
