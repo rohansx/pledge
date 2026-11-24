@@ -2,6 +2,7 @@
 
     pledge boot APP_DIR [--env KEY=VALUE ...]
     pledge run APP_DIR --scenario NAME [--faults FILE] [--seed N] [--runs-dir DIR]
+    pledge browser APP_DIR --scenario NAME --journey KEY [--out DIR]
     pledge verdict APP_DIR RUN_DIR [RUN_DIR ...]
     pledge down APP_DIR
     pledge scan APP_DIR --scenario NAME --faults FILE [--seeds N] [--env KEY=VALUE ...]
@@ -44,6 +45,12 @@ def _parser() -> argparse.ArgumentParser:
     run.add_argument("--faults", type=Path, help="JSON file with a `faults` list; omit for a baseline run")
     run.add_argument("--seed", type=int, default=0)
     run.add_argument("--runs-dir", type=Path, default=Path("runs"))
+
+    browser = commands.add_parser("browser", help="record a scenario's browser steps as one journey's user, to try them")
+    browser.add_argument("app_dir", type=Path)
+    browser.add_argument("--scenario", required=True)
+    browser.add_argument("--journey", required=True, help="a journey key, as a failing check reports it in result.json")
+    browser.add_argument("--out", type=Path, default=Path("browser"))
 
     report = commands.add_parser("verdict", help="count kept and broken per pledge across runs")
     report.add_argument("app_dir", type=Path)
@@ -117,6 +124,10 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "run":
             print(json.dumps(local.run(args.app_dir, args.scenario, args.faults, args.seed, args.runs_dir)))
             return 0
+        if args.command == "browser":
+            info = local.record_browser(args.app_dir / ".pledge" / "scenarios" / args.scenario / local.BROWSER_STEPS, args.out, args.journey)
+            print(json.dumps(info))
+            return 1 if info["error"] else 0
         if args.command == "author":
             from pledge.agent import AgentError  # imported here: only this command needs the Anthropic SDK
             from pledge.author import author, format_report

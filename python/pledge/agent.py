@@ -227,7 +227,7 @@ def author_phase(discovered: dict, recipe: str) -> Phase:
     task = (
         "What the previous phase learned about the application:\n\n```json\n" + json.dumps(discovered, indent=2)
         + "\n```\n\nThe boot recipe it wrote, /work/app/pledge.boot.json:\n\n```json\n" + recipe
-        + "\n```\n\nThe application is running. Write the scenarios, pledges and faults files, then call finish."
+        + "\n```\n\nThe application is running. Write the caller inventory first, then the scenarios, pledges and faults files, then call finish."
     )
     return Phase(
         name="author",

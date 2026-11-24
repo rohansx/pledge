@@ -86,7 +86,7 @@ def author(app_dir: Path, out_dir: Path, live=None) -> dict:
             from pledge.verdict import load_pledges
 
             for pledge in load_pledges(out_dir):
-                live.event("pledge_proposed", id=pledge["id"], statement=pledge["statement"][:300], source=pledge["source"])
+                live.event("pledge_proposed", id=pledge["id"], statement=pledge["statement"][:300], source=pledge["source"], reach=pledge.get("reach") or "unknown")
         # Boot once, fork many: the booted app, with everything the agent installed, is saved so that scans
         # start from it instead of installing again (and so that they can run with outbound closed).
         snapshot_id = sandbox.create_snapshot(mode="full").snapshot_id

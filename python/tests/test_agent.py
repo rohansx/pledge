@@ -156,6 +156,36 @@ def test_every_request_asks_for_fallbacks_caching_and_the_phase_effort():
     assert "thinking" not in request and "tool_choice" not in request  # both are rejected or pointless on this model
 
 
+def test_the_author_prompt_puts_the_caller_inventory_before_scenarios_in_the_words_the_check_uses():
+    from pledge import check
+    from pledge.verdict import REACHES
+
+    system = prompts.author_system()
+
+    assert system.index(check.CALLERS_FILE) < system.index("**Scenarios**") < system.index("**Pledges**") < system.index("**Browser steps**")
+    for word in (*REACHES, *check.REPEATS, "reach", "trigger", "evidence"):
+        assert f"`{word}`" in system, word
+    for phrase in ("scenarios/<name>/browser.cjs", "fill(secret(token))", "pledge browser . --scenario"):
+        assert phrase in system, phrase
+    assert "A journey that retries where no real caller does proves nothing" in system
+    assert "Journeys that never retry cannot reveal" not in system  # the rule that made every finding a retried POST
+
+
+def test_prompt_examples_stay_in_the_booking_domain_and_inside_the_sandbox():
+    from pledge import check
+
+    for text in (prompts.BOOT, prompts.AUTHOR_INTRO):
+        assert not any(word in text.lower() for word in ("leadecho", "umami", "saleor", "checkout", "cart"))
+        assert check.EXTERNAL_URL.findall(text) == []
+
+
+def test_the_boot_phase_reports_who_calls_the_app_and_is_told_to_serve_its_frontend():
+    assert "clients" in prompts.BOOT_FINISH["input_schema"]["required"]
+    assert prompts.BOOT_FINISH["input_schema"]["properties"]["clients"]["items"]["properties"]["kind"]["enum"] == ["ui", "client", "provider", "internal"]
+    assert "## Who calls the application" in prompts.BOOT and "through the application's proxy route" in prompts.BOOT
+    assert "caller inventory first" in agent.author_phase({"clients": []}, "{}").task
+
+
 def test_tool_schemas_are_strict():
     for tool in [*prompts.WORK_TOOLS, prompts.BOOT_FINISH, prompts.AUTHOR_FINISH]:
         assert tool["strict"] is True

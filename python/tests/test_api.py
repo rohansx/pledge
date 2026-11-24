@@ -96,6 +96,28 @@ def test_the_findings_list_carries_the_damage_and_puts_money_first(client):
     assert findings[0]["expected"] == {"/charged_twice": 0} and findings[0]["actual"] == {"/charged_twice": 13}
 
 
+def test_findings_real_callers_can_cause_come_before_those_only_a_direct_api_caller_could(client):
+    probe = pledge("psp-never-charged-twice", "broken") | {"reach": "api_only", "trigger": "No shipped client repeats this; only a direct API caller could."}
+    clicked = pledge("item-update-persists", "broken") | {"reach": "ui", "trigger": "The user double-clicks Save: the button is not disabled while saving."}
+    scan(client, [probe, pledge("comment-created-once", "broken"), clicked])
+
+    findings = client.get("/api/repos/shop/findings").json()["data"]
+
+    # Reach outranks severity: money that no shipped client can lose is below a wrong record a click can make.
+    assert [(f["pledgeKey"], f["reach"]) for f in findings] == [("item-update-persists", "ui"), ("comment-created-once", "unknown"), ("psp-never-charged-twice", "api_only")]
+    detail = client.get(f"/api/findings/{findings[0]['id']}").json()["data"]
+    assert (detail["reach"], detail["trigger"]) == ("ui", "The user double-clicks Save: the button is not disabled while saving.")
+    pledges = {p["key"]: p for p in client.get("/api/repos/shop/pledges").json()["data"]}
+    assert (pledges["psp-never-charged-twice"]["reach"], pledges["psp-never-charged-twice"]["trigger"]) == ("api_only", probe["trigger"])
+    assert (pledges["comment-created-once"]["reach"], pledges["comment-created-once"]["trigger"]) == ("unknown", "")  # sent by an older command line
+    assert client.get(f"/api/pledges/{pledges['item-update-persists']['id']}").json()["data"]["reach"] == "ui"
+
+
+def test_a_reach_outside_the_known_ones_is_refused(client):
+    run = client.post("/api/repos/shop/runs", json={"trigger": "manual"}).json()["data"]
+    assert client.post(f"/api/runs/{run['id']}/result", json=result([pledge("one-charge", "broken") | {"reach": "everyone"}])).status_code == 422
+
+
 def test_a_recording_becomes_the_finding_timeline_and_its_seed_the_replay(client):
     broken = pledge("one-charge", "broken", seeds=("fail", "fail"))
     steps = [

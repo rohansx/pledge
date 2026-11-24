@@ -5,6 +5,7 @@ These run wherever the app runs: inside a sandbox for a scan, or on a laptop for
 
 from __future__ import annotations
 
+import html
 import json
 import os
 import signal
@@ -14,7 +15,9 @@ import tempfile
 import time
 import urllib.error
 import urllib.request
+import zipfile
 from pathlib import Path
+from urllib.parse import quote, quote_plus
 
 from pledge.proxy import DEFAULT_ADMIN_PORT
 
@@ -27,6 +30,9 @@ BROWSER_STEPS = "browser.cjs"  # optional, next to a scenario's journeys.js
 BROWSER_FILES = ("trace.zip", "video.webm", "screenshot.png")
 BROWSER_TIMEOUT_SECONDS = 120
 PLAYWRIGHT_MODULES = "/opt/pw/node_modules"  # where the sandbox has Playwright; see pledge.template
+SECRETS_MARK = "PLEDGE_SECRETS "  # browser_runner.cjs ends its stdout with this and a JSON list
+MIN_SECRET_CHARS = 6
+MASK = b"********"
 
 
 class BootError(RuntimeError):
@@ -193,16 +199,72 @@ def _record_browser(steps: Path, run_dir: Path) -> None:
     ponytail: one recording per run, of the first failing journey; record per failing check when two differ."""
     assertions = json.loads((run_dir / "result.json").read_text())["assertions"]
     journey = next((failure["logical_key"] for row in assertions if row["status"] == "fail" for failure in row.get("failures") or [] if failure.get("logical_key")), None)
-    if not steps.is_file() or journey is None:
-        return
-    out = run_dir / "pledge" / "browser"
+    if steps.is_file() and journey is not None:
+        record_browser(steps, run_dir / "pledge" / "browser", journey)
+
+
+def record_browser(steps: Path, out: Path, journey: str) -> dict:
+    """Run a scenario's browser steps as `journey`'s user and keep the recording in `out`, with typed secrets masked."""
     out.mkdir(parents=True, exist_ok=True)
     command = ["node", str(Path(__file__).with_name("browser_runner.cjs")), str(steps), str(out)]
-    env = {**os.environ, "NODE_PATH": PLAYWRIGHT_MODULES, "PLEDGE_JOURNEY": journey}
+    env = {**os.environ, "NODE_PATH": os.environ.get("PLEDGE_PLAYWRIGHT_MODULES", PLAYWRIGHT_MODULES), "PLEDGE_JOURNEY": journey}
+    secrets: list[str] | None = None
     try:
         done = subprocess.run(command, capture_output=True, text=True, timeout=BROWSER_TIMEOUT_SECONDS, env=env)
         error = done.stderr[-2000:] if done.returncode else ""
-    except (OSError, subprocess.TimeoutExpired) as exc:
+        # The runner's last word on stdout is what was typed into password fields. It is used here and kept nowhere.
+        told = [line for line in done.stdout.splitlines() if line.startswith(SECRETS_MARK)]
+        secrets = [str(item) for item in json.loads(told[-1][len(SECRETS_MARK):])] if told else None
+    except (OSError, ValueError, subprocess.TimeoutExpired) as exc:
         error = str(exc)[-2000:]
+    trace = out / "trace.zip"
+    if trace.is_file():
+        try:
+            if secrets is None:
+                raise ValueError("the runner did not say what was typed")
+            scrub_trace(trace, secrets)
+        except (ValueError, OSError, zipfile.BadZipFile) as exc:
+            # A trace that could not be masked may hold a password as typed. No trace is better than that one.
+            trace.unlink()
+            error = (error + f"\ntrace.zip dropped, it could not be masked: {exc}").strip()
+    for secret in _maskable(secrets or []):
+        error = error.replace(secret, MASK.decode())
     files = sorted(name for name in BROWSER_FILES if (out / name).is_file())
-    (out / "browser.json").write_text(json.dumps({"journey": journey, "files": files, "error": error}))
+    info = {"journey": journey, "files": files, "error": error}
+    (out / "browser.json").write_text(json.dumps(info))
+    return info
+
+
+def _maskable(secrets: list[str]) -> list[str]:
+    """Longest first, so a password goes before its own prefixes, which typing key by key also reports."""
+    return sorted({secret for secret in secrets if len(secret) >= MIN_SECRET_CHARS}, key=len, reverse=True)
+
+
+def scrub_trace(trace: Path, secrets: list[str]) -> None:
+    """Rewrite a Playwright trace with every spelling of each typed secret replaced.
+
+    Playwright cannot leave an action's parameters out of a trace, and the value is in more places than the
+    action: the page snapshots after it and the body of the request that submits it. So the trace is recorded
+    whole and every file in it is rewritten here.
+
+    ponytail: byte replacement of the spellings a value takes as text. It does not find a secret that was
+    transformed (base64 in a Basic header, a hash), one shorter than MIN_SECRET_CHARS (masking "abc" everywhere
+    would wreck the trace), or one drawn as pixels in the screenshots and the video (a password field draws
+    dots, unless the page has a show-password toggle and the steps click it). Tokens and cookies the app hands
+    the synthetic user are left in. Parse the trace's JSON instead if any of these starts to matter."""
+    spellings: list[bytes] = []
+    for secret in _maskable(secrets):
+        once = json.dumps(secret)[1:-1]
+        raw = json.dumps(secret, ensure_ascii=False)[1:-1]  # as JavaScript writes it: non-ASCII left alone
+        forms = [secret, once, raw, json.dumps(once)[1:-1], json.dumps(raw, ensure_ascii=False)[1:-1], quote(secret, safe=""), quote_plus(secret), html.escape(secret)]
+        spellings += [form.encode() for form in dict.fromkeys(sorted(forms, key=len, reverse=True))]
+    if not spellings:
+        return
+    masked = trace.with_name(trace.name + ".masked")
+    with zipfile.ZipFile(trace) as source, zipfile.ZipFile(masked, "w", zipfile.ZIP_DEFLATED) as target:
+        for item in source.infolist():
+            data = source.read(item)
+            for spelling in spellings:
+                data = data.replace(spelling, MASK)
+            target.writestr(item.filename, data)
+    masked.replace(trace)
