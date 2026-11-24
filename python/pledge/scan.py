@@ -32,6 +32,7 @@ except urllib.error.HTTPError: pass
 except Exception as exc: sys.exit('the app restored from the snapshot does not answer at '+target+': '+str(exc))" """
 SKIP = {".pledge-run", ".pledge-runs", "__pycache__", ".venv", "node_modules", ".git"}
 MAX_EVIDENCE_BYTES = 64 * 1024 * 1024
+PLEDGE_READS = ("scenarios", "pledges", "faults")
 
 
 def load_key() -> None:
@@ -69,7 +70,7 @@ def _sh(sandbox, command: str, timeout: int = 300) -> str:
 
 def _upload(sandbox, directory: Path, destination: str, skip: set[str] = frozenset()) -> None:
     sandbox.files.write("/tmp/upload.tgz", _tar(directory, skip), user="root")
-    _sh(sandbox, f"mkdir -p {destination} && tar -xzf /tmp/upload.tgz -C {destination} && rm /tmp/upload.tgz")
+    _sh(sandbox, f"mkdir -p {destination} && tar -xzf /tmp/upload.tgz --no-same-owner --no-overwrite-dir -C {destination} && rm /tmp/upload.tgz")
 
 
 def _one_run(fork, scenario: str, faults: str | None, seed: int, runs_dir: Path) -> dict:
@@ -130,8 +131,11 @@ def scan(app_dir: Path, scenario: str, faults_file: Path | None, seeds: int, env
         lap("restore snapshot" if snapshot else "create sandbox")
         _upload(sandbox, Path(__file__).resolve().parent, f"{PACKAGE}/pledge")
         if snapshot:
-            # The app is running as it was when the snapshot was taken. Only what Pledge reads is refreshed.
-            _upload(sandbox, app_dir / ".pledge", f"{APP}/.pledge")
+            # The app is running as it was when the snapshot was taken. Only what Pledge reads is refreshed: an app
+            # may keep live state under .pledge (a Postgres data directory), and overwriting it kills the app.
+            for part in PLEDGE_READS:
+                if (app_dir / ".pledge" / part).is_dir():
+                    _upload(sandbox, app_dir / ".pledge" / part, f"{APP}/.pledge/{part}")
             lap("upload")
             _sh(sandbox, f"{CHECK_RUNNING}")
         else:
