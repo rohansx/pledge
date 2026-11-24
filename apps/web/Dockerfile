@@ -9,7 +9,7 @@ COPY apps/web apps/web
 RUN pnpm --filter @pledge/web build
 # The viewer for browser recordings: static files shipped inside playwright-core, served at /trace/.
 # Keep the version at or above the one the sandbox records with (spikes/s4_browser_snapshot.py).
-RUN cd /tmp && npm pack --silent playwright-core@1.56.1 && tar -xzf playwright-core-1.56.1.tgz package/lib/vite/traceViewer \
+RUN cd /tmp && npm pack --silent playwright-core@1.56.1 && tar -xzf playwright-core-1.56.1.tgz \
   && mv package/lib/vite/traceViewer /repo/apps/web/dist/trace
 
 FROM nginx:1.29-alpine
