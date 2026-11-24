@@ -14,7 +14,7 @@ if (!pk) console.warn('[waitlist] PUBLIC_LOBBY_PROJECT_KEY is not set; rendering
       <form class="wl-fallback" method="post" action={`${base}/v1/w/${pk}/signup`}>
         <label class="sr-only" for="wl-email">Work email</label>
         <input id="wl-email" type="email" name="email" required placeholder="you@company.com" autocomplete="email" />
-        <button class="btn btn-dark" type="submit">Join the waitlist</button>
+        <button class="btn btn-dark" type="submit">Get early access</button>
       </form>
     </noscript>
     <script
@@ -23,7 +23,7 @@ if (!pk) console.warn('[waitlist] PUBLIC_LOBBY_PROJECT_KEY is not set; rendering
       src={`${base}/v1/wl.js`}
       data-project={pk}
       data-target="#waitlist"
-      data-button="Join the waitlist"
+      data-button="Get early access"
       data-placeholder="you@company.com"
       data-success="You're on the list. Check your inbox to confirm your place."
       data-counter="true"

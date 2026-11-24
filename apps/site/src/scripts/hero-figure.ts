@@ -26,7 +26,7 @@ if (HL && stage && readout) {
   };
   const [, mid] = forks.range;
   forks.mount({ stage, svg, read }, mid);
-  if (!readout.textContent) readout.textContent = 'rest';
+  if (!readout.textContent) readout.textContent = 'point at a run';
 
   // like the package's `play`: an unseen pointer walks the tour until a real one arrives
   if (!HL.reducedMotion()) HL.tour(stage, forks.tour, () => {});
