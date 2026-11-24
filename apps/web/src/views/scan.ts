@@ -34,7 +34,7 @@ function head(stored: StoredScan): HTMLElement {
   );
 }
 
-function evidence(pledge: ScanPledge): HTMLElement {
+export function evidence(pledge: ScanPledge): HTMLElement {
   const rows: HTMLElement[] = [];
   for (const seed of pledge.seeds) {
     const checks = seed.expected === undefined && seed.actual === undefined ? [] : checkRows(seed.expected, seed.actual);
@@ -44,7 +44,7 @@ function evidence(pledge: ScanPledge): HTMLElement {
       continue;
     }
     checks.forEach((check, index) =>
-      rows.push(h("tr", { class: check.differs && seed.status === "fail" ? "differs" : "" }, label(index === 0), h("td", { class: "key" }, check.key || "value"), h("td", {}, check.expected), h("td", { class: "actual" }, check.actual))),
+      rows.push(h("tr", { class: check.differs && seed.status === "fail" ? "differs" : "" }, label(index === 0), h("td", { class: "key" }, check.key || (seed.failed ? `per journey; ${seed.failed} failed` : "value")), h("td", {}, check.expected), h("td", { class: "actual" }, check.actual))),
     );
   }
   return h(
@@ -151,11 +151,9 @@ function runs(scan: Scan): HTMLElement[] {
   ];
 }
 
-function authoring(scan: Scan): HTMLElement[] {
-  const report = scan.authoring;
-  if (!report) return [];
+/** The phases table, the model's own summary and its questions for a reviewer. */
+export function authoringReport(report: NonNullable<Scan["authoring"]>): HTMLElement[] {
   return [
-    h("h2", {}, "Written by Claude", h("small", {}, `scenario, pledges and faults authored in ${seconds(report.seconds)}; checks in the sandbox accepted each phase`)),
     h(
       "div",
       { class: "scroll" },
@@ -177,14 +175,23 @@ function authoring(scan: Scan): HTMLElement[] {
   ];
 }
 
-export function scanView(stored: StoredScan): HTMLElement {
+function authoring(scan: Scan): HTMLElement[] {
+  const report = scan.authoring;
+  if (!report) return [];
+  return [
+    h("h2", {}, "Written by Claude", h("small", {}, `scenario, pledges and faults authored in ${seconds(report.seconds)}; checks in the sandbox accepted each phase`)),
+    ...authoringReport(report),
+  ];
+}
+
+export function scanView(stored: StoredScan, backHref: string): HTMLElement {
   const { scan } = stored;
   const pledges = [...scan.pledges].sort((a, b) => ORDER[a.result] - ORDER[b.result]);
   const broken = pledges.filter((pledge) => pledge.result === "broken").length;
   return h(
     "div",
     { class: "wrap" },
-    h("a", { class: "back", href: "#/" }, "← All scans"),
+    h("a", { class: "back", href: backHref }, "← All scans"),
     head(stored),
     h("h2", {}, "Pledges", h("small", {}, `${pledgeCount(pledges.length, broken)}; select one for expected against actual`)),
     ...pledges.map((pledge, index) => pledgeRow(pledge, pledge.result === "broken" && index === 0)),

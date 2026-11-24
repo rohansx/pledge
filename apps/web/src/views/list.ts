@@ -7,10 +7,10 @@ export function seedSquares(verdicts: string[], large = false): HTMLElement {
   return h("span", { class: large ? "seeds lg" : "seeds", role: "img", "aria-label": label, title: label }, ...verdicts.map((verdict) => h("i", { class: verdict === "inconclusive" ? "" : verdict })));
 }
 
-function row(scan: ScanSummary): HTMLElement {
+export function scanRow(scan: ScanSummary, href: string): HTMLElement {
   return h(
     "a",
-    { class: `scan-row${scan.verdict === "broken" || scan.broken > 0 ? " is-broken" : ""}`, href: `#/scans/${scan.id}` },
+    { class: `scan-row${scan.verdict === "broken" || scan.broken > 0 ? " is-broken" : ""}`, href },
     h("span", {}, h("span", { class: `stamp ${scan.verdict}` }, scan.verdict)),
     h(
       "span",
@@ -24,7 +24,7 @@ function row(scan: ScanSummary): HTMLElement {
   );
 }
 
-export function listView(scans: ScanSummary[]): HTMLElement {
+export function listView(scans: ScanSummary[], hrefFor: (scan: ScanSummary) => string): HTMLElement {
   const body =
     scans.length === 0
       ? h(
@@ -33,7 +33,7 @@ export function listView(scans: ScanSummary[]): HTMLElement {
           h("p", {}, "No scans have been published yet."),
           h("p", {}, "Run one and send it here with ", h("code", {}, "pledge scan <app> --scenario <name> --faults <file> --publish"), "."),
         )
-      : h("div", { class: "ledger" }, ...scans.map(row));
+      : h("div", { class: "ledger" }, ...scans.map((scan) => scanRow(scan, hrefFor(scan))));
   return h(
     "div",
     { class: "wrap" },
