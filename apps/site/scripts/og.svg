@@ -12,8 +12,10 @@
   <rect width="1200" height="630" fill="url(#s)"/>
   <rect width="1200" height="630" filter="url(#n)"/>
   <g transform="translate(80 80) scale(2.333)">
-    <path fill="#F4EFE9" fill-rule="evenodd" d="M3 2h12l6 6v4l-6 6H9v4H3zM9 7h4l2 2v2l-2 2H9z"/>
-    <rect x="17" y="18" width="4" height="4" fill="#E2482B"/>
+    <g fill="none" stroke-width="1.8" stroke-linecap="round">
+      <path stroke="#F4EFE9" d="M12 4v16M5.1 8l13.8 8"/>
+      <path stroke="#E2482B" d="M5.1 16L18.9 8"/>
+    </g>
   </g>
   <text x="152" y="118" font-family="Geist Mono, DejaVu Sans Mono, monospace" font-size="30" font-weight="600" fill="#F4EFE9">pledge</text>
   <text x="80" y="330" font-family="Geist Mono, DejaVu Sans Mono, monospace" font-size="64" font-weight="700" letter-spacing="-3" fill="#F4EFE9">Your app made promises.</text>

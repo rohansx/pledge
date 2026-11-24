@@ -2,6 +2,7 @@
 import Base from '../layouts/Base.astro';
 import Waitlist from '../components/Waitlist.astro';
 import Demo from '../components/Demo.astro';
+import Mark from '../components/Mark.astro';
 
 const title = 'Pledge — prove your app keeps its promises';
 const description =
@@ -23,18 +24,17 @@ const bugs = [
 ];
 ---
 <Base title={title} description={description}>
-  <!-- Pledge mark: a faceted P (straight cuts only, on a 24 grid) with one seal-red block set off its corner,
-       the run that broke. Solid fills, no hairlines, so it stays crisp at 16px. -->
+  <!-- Pledge mark: an asterisk, the fine print of a promise, with one arm in seal red. Static copy for small uses. -->
   <svg width="0" height="0" style="position:absolute" aria-hidden="true">
-    <symbol id="mark" viewBox="0 0 24 24">
-      <path fill="currentColor" fill-rule="evenodd" d="M3 2h12l6 6v4l-6 6H9v4H3zM9 7h4l2 2v2l-2 2H9z" />
-      <rect x="17" y="18" width="4" height="4" fill="var(--seal, #C8361D)" />
+    <symbol id="mark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
+      <path d="M12 4v16M5.1 8l13.8 8" />
+      <path d="M5.1 16L18.9 8" stroke="var(--seal, #C8361D)" />
     </symbol>
   </svg>
 
   <nav class="nav" aria-label="Main">
     <div class="nav-in glass ticks">
-      <a class="logo" href="/" aria-label="Pledge home"><svg width="20" height="20" aria-hidden="true"><use href="#mark" /></svg>pledge</a>
+      <a class="logo" href="/" aria-label="Pledge home"><Mark />pledge</a>
       <div class="links">
         <a href="#demo">Example</a>
         <a href="#how">How it works</a>
@@ -54,7 +54,7 @@ const bugs = [
     <header class="hero wrap">
       <div class="hero-grid">
         <div class="hero-copy">
-          <div class="eyebrow">Fault testing for your data</div>
+          <div class="eyebrow marked"><Mark size={14} tick />Fault testing for your data</div>
           <h1>Your app made promises.<span>Prove it keeps them.</span></h1>
           <p class="sub">{description}</p>
 
