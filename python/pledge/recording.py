@@ -44,12 +44,29 @@ def _step(entry: dict, start: int) -> dict:
     if operation and "graphql" in entry["path"]:
         where += f" {operation.group(2)}"  # every GraphQL step is the same POST; the operation says what it did
     detail = {"request": entry.get("request", ""), "reply": entry.get("reply", "")}
-    if entry.get("fault") is not None:
-        text = f"{where}: the app did the work and answered {entry['upstream_status']}, but the reply was lost. The client got {entry['returned_status']}."
-        return {"at": entry["at_ms"] - start, "actor": "fault", "text": text, "detail": detail}
-    if entry.get("upstream_status") is None:
-        return {"at": entry["at_ms"] - start, "actor": "client", "text": f"{where} → app unreachable ({entry['returned_status']})", "detail": detail}
-    return {"at": entry["at_ms"] - start, "actor": "client", "text": f"{where} → {entry['returned_status']}", "detail": detail}
+    at, upstream, returned = entry["at_ms"] - start, entry.get("upstream_status"), entry["returned_status"]
+    answered = f"the app answered {upstream}" if upstream is not None else "the app did not answer"
+    # A log written before the proxy had other kinds says only that a fault hit: that was a lost reply.
+    kinds = entry.get("kinds") or (["retry"] if entry.get("fault") is not None else [])
+    if entry.get("copy"):
+        when = "at the same instant as the first" if "race" in kinds else "though nobody sent it twice"
+        return {"at": at, "actor": "fault", "text": f"{where}: the same request was delivered a second time, {when}. This time {answered}; nobody was waiting for that reply.", "detail": detail}
+    if not kinds:
+        outcome = f"app unreachable ({returned})" if upstream is None else str(returned)
+        return {"at": at, "actor": "client", "text": f"{where} → {outcome}", "detail": detail}
+    told = []
+    if "restart" in kinds:
+        told.append(f"{entry.get('service', 'a service')} was killed and started again while this request was in flight")
+    if "race" in kinds:
+        told.append("the request was sent twice at the same instant, as a double click or two workers would")
+    if "duplicate" in kinds:
+        told.append("the request will be delivered a second time, as a provider redelivering a webhook would")
+    if "delay" in kinds:
+        told.append(f"the reply was held for {entry.get('delay_ms', '?')} ms")
+    if "retry" in kinds:
+        told.append(f"the app did the work and answered {upstream}, but the reply was lost")
+    text = f"{where}: {'; '.join(told)}. The client got {returned}."
+    return {"at": at, "actor": "fault", "text": text, "detail": detail}
 
 
 def recording(run_dir: Path, assertion: str, statement: str) -> dict | None:
@@ -71,4 +88,4 @@ def recording(run_dir: Path, assertion: str, statement: str) -> dict | None:
     failure = next((f for f in row.get("failures") or [] if f.get("logical_key") == journey), row)
     found = f"expected {json.dumps(failure.get('expected'))[:200]}, found {json.dumps(failure.get('actual'))[:200]}"
     steps.append({"at": entries[-1]["at_ms"] - start, "actor": "check", "text": f"Broken: {statement[:700]} ({found})", "detail": None})
-    return {"seed": result["seed"], "journey": journey, "faults_hit": sum(entry.get("fault") is not None for entry in entries), "steps": steps}
+    return {"seed": result["seed"], "journey": journey, "faults_hit": sum(entry.get("fault") is not None and not entry.get("copy") for entry in entries), "steps": steps}

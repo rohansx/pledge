@@ -54,7 +54,8 @@ component list of the [architecture](./architecture.md) yet.
 ## Not done
 
 - Fault plan `params` are recorded by the engine as written. The fault proxy defines and
-  validates them; so far only for `retry` (see [phase-1](./phase-1.md)).
+  validates them, for every kind but `reorder` (see [sandbox design](./sandbox-design.md#fault-proxy)).
+  The proxy's `duplicate` and `race` are the engine's `duplicate_delivery` and `same_instant`.
 - Proxy and fake-service logs are not copied into the run directory, so they are not covered
   by the engine's redaction or its artifact checksums.
 - The run does not record a snapshot id.

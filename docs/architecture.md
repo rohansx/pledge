@@ -77,7 +77,7 @@ open-source CLI. The rest is new.
 | Agent runner | Runs the Claude loop and exposes tools that act on one sandbox | Python, Anthropic API with tool use | New |
 | Sandbox | One isolated machine per scan | E2B (Firecracker microVM); Docker inside it works ([spikes](./spikes/phase-0.md)) | Exists as a target option |
 | App under test | The customer's code and its database | The customer's stack | n/a |
-| Fault proxy | Sits on the app's inbound and outbound calls. Retries, duplicates, delays and reorders on a seed | Small Python HTTP proxy | New |
+| Fault proxy | Sits on the app's inbound and outbound calls. Retries, duplicates, races, delays and restarts on a seed | Small Python HTTP proxy | New |
 | Fake services | Stand-ins for payments, email and webhooks that record every call | Small Python HTTP servers, generated per repo | New |
 | LiteTraffic engine | Fixtures, seeded traffic through k6, observers, assertions, verdict, report | Python CLI plus k6 | Exists |
 | Evidence store | Run directories: manifests, events, failing samples, reports | Object storage | New (local run folders exist) |

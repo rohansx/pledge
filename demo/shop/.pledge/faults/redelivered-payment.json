@@ -1,0 +1,4 @@
+{
+  "description": "Half of the payment requests are delivered to the shop a second time after the first was answered, as a queue or a webhook sender redelivers.",
+  "faults": [{ "kind": "duplicate", "target": "app POST /payments", "params": { "rate": 0.5 } }]
+}
