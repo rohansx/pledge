@@ -27,6 +27,8 @@ class SeedIn(Strict):
     expected: Any = None
     actual: Any = None
     failed: int | None = Field(default=None, ge=0)
+    samples: int | None = Field(default=None, ge=0)  # journeys the check read, of which `failed` failed
+    gap: float | None = Field(default=None, ge=0)  # how far the failed journeys missed, summed, in the app's unit
 
 
 class StepDetailIn(Strict):

@@ -172,7 +172,7 @@ def test_a_published_seed_shows_a_sample_that_read_a_value_and_is_unknown_when_n
 
     run = {"seed": 4, "run_id": "r4", "assertions": [UNREAD, UNREAD | {"id": "mixed", "failed": 2, "failures": [*UNREAD["failures"], MISSING["failures"][0]]}, {"id": "pays", "status": "pass"}]}
 
-    assert _seed(run, "team_has_one_owner") == {"seed": 4, "run_id": "r4", "status": "unknown", "expected": 1, "failed": 1}
-    assert _seed(run, "mixed") == {"seed": 4, "run_id": "r4", "status": "fail", "expected": 1, "actual": 0, "failed": 2}
+    assert _seed(run, "team_has_one_owner") == {"seed": 4, "run_id": "r4", "status": "unknown", "expected": 1, "failed": 1, "samples": 20}
+    assert _seed(run, "mixed") == {"seed": 4, "run_id": "r4", "status": "fail", "expected": 1, "actual": 0, "failed": 2, "samples": 20}
     assert _seed(run, "pays", fired=False)["status"] == "unknown"
     assert _seed(run, "pays")["status"] == "pass"

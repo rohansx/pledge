@@ -4,7 +4,7 @@ import { ArrowRight, CircleCheck, ShieldAlert, TriangleAlert, type LucideIcon } 
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 
 import { Card, Empty, ErrorNote, FindingStatusBadge, Loading, PageTitle, RunStrip, SeedCount, Seeds, SeverityBadge, Stat, VerdictBadge } from "../components/ui.tsx";
-import { fieldName, impact, runState, thousands, title, when } from "../format.ts";
+import { fieldName, harmFigures, impact, runState, thousands, title, when } from "../format.ts";
 import { overviewQuery } from "../queries.ts";
 import type { Finding, Overview, Run } from "../types.ts";
 
@@ -25,8 +25,17 @@ export function RunRow({ run }: { run: Run }) {
   );
 }
 
-/** The damage in one line: the first checked value that missed, as the app counted it. */
-export function Damage({ expected, actual }: { expected: unknown; actual: unknown }) {
+/** The damage in one line: the summed harm when known, else the first checked value that missed. */
+export function Damage({ expected, actual, harm, severity }: { expected: unknown; actual: unknown; harm?: Finding["harm"]; severity?: string }) {
+  const [journeys, gap] = harmFigures(harm ?? null, severity ?? "");
+  if (journeys) {
+    return (
+      <span className="block sm:text-right">
+        <span className="text-sm font-semibold text-seal tabular-nums">{gap ? gap.value : journeys.value}</span> <span className="text-[13px] text-ink">{gap ? (severity === "money" ? "charged wrongly" : "off") : "journeys"}</span>
+        <span className="block text-xs text-mute">{gap ? `${journeys.value} journeys` : "broke it"}</span>
+      </span>
+    );
+  }
   const rows = impact([{ status: "fail", expected, actual }]);
   const row = rows[0];
   if (!row) return null;
@@ -48,7 +57,7 @@ export function FindingRow({ finding }: { finding: Finding }) {
         </span>
         <span className="mt-0.5 line-clamp-1 text-[13px] text-ink-2">{finding.statement}</span>
       </span>
-      <Damage expected={finding.expected} actual={finding.actual} />
+      <Damage expected={finding.expected} actual={finding.actual} harm={finding.harm} severity={finding.severity} />
       <span className="flex items-center gap-1.5 sm:justify-end"><SeedCount broken={finding.brokenSeeds.length} total={finding.totalSeeds} /></span>
       <FindingStatusBadge status={finding.status} />
       <span className="text-xs text-mute sm:text-right">{when(finding.firstSeen)}</span>

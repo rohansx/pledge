@@ -29,7 +29,42 @@ def _bounded(value: object) -> object:
     return value if len(text) <= MAX_VALUE_CHARS else text[: MAX_VALUE_CHARS - 20] + "... [cut]"
 
 
-def _seed(result: dict, assertion: str, fired: bool = True) -> dict:
+def _number(value: object) -> float | None:
+    """A value read as one number: a number, or an object holding exactly one number (`{"psp_captured": 80}`)."""
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)):
+        return float(value)
+    numbers = [item for item in value.values() if isinstance(item, (int, float)) and not isinstance(item, bool)] if isinstance(value, dict) else []
+    return float(numbers[0]) if len(numbers) == 1 else None
+
+
+def gap(expected: object, actual: object) -> float | None:
+    """How far one failing journey missed, in the app's own unit: captured 80 where 40 was owed is 40.
+    A bound (`{"lte": 40}`) is missed by its worst value; anything else that is not one number each has no gap."""
+    if isinstance(expected, dict) and len(expected) == 1 and next(iter(expected)) in ("lte", "lt", "gte", "gt"):
+        bound, values = next(iter(expected.values())), actual.values() if isinstance(actual, dict) else [actual]
+        values = [float(v) for v in values if isinstance(v, (int, float)) and not isinstance(v, bool)]
+        if not isinstance(bound, (int, float)) or not values:
+            return None
+        return max(0.0, max(values) - bound) if next(iter(expected)) in ("lte", "lt") else max(0.0, bound - min(values))
+    want, got = _number(expected), _number(actual)
+    return abs(got - want) if want is not None and got is not None else None
+
+
+def _gap_total(run_dir: Path, assertion: str) -> float | None:
+    """The gap summed over every journey that failed the check, read from the full event log: the result keeps
+    only a few failing samples."""
+    gaps = []
+    for path in sorted((run_dir / "events").glob("*.jsonl")):
+        for line in path.read_text().splitlines():
+            event = json.loads(line) if line.strip() else {}
+            if event.get("assertion") == assertion and event.get("passed") is False:
+                gaps.append(gap(event.get("expected"), event.get("actual")))
+    return round(sum(gaps), 2) if gaps and None not in gaps else None
+
+
+def _seed(result: dict, assertion: str, fired: bool = True, run_dir: Path | None = None) -> dict:
     row = next((row for row in result["assertions"] if row["id"] == assertion), None)
     entry: dict = {"seed": result["seed"], "run_id": result["run_id"], "status": mark(row, fired) if row else "unknown"}
     if row is None:
@@ -43,6 +78,9 @@ def _seed(result: dict, assertion: str, fired: bool = True) -> dict:
             entry[key] = _bounded(sample[key])
     if row.get("failed"):
         entry["failed"] = row["failed"]
+        entry["samples"] = row.get("samples")
+        if run_dir is not None and (total := _gap_total(run_dir, assertion)) is not None:
+            entry["gap"] = total
     return entry
 
 
@@ -98,7 +136,7 @@ def build_record(app_dir: Path, report: dict, run_dirs: list[Path], faults_file:
             "confidence": row["confidence"], "assertion": row["assertion"], "result": row["result"],
             "reach": row.get("reach", "unknown"), "trigger": row.get("trigger", "")[:300],
             "kept": row["kept"], "broken": row["broken"], "unknown": row["unknown"],
-            "seeds": [_seed(result, row["assertion"], result["seed"] not in quiet) if result["seed"] not in down else {"seed": result["seed"], "run_id": result["run_id"], "status": "unknown"} for result in results],
+            "seeds": [_seed(result, row["assertion"], result["seed"] not in quiet, run_dir) if result["seed"] not in down else {"seed": result["seed"], "run_id": result["run_id"], "status": "unknown"} for run_dir, result in pairs],
         }
         for row in report["pledges"] if "kept" in row
     ]

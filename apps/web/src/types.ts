@@ -26,6 +26,8 @@ export interface Seed {
   expected?: unknown;
   actual?: unknown;
   failed?: number;
+  samples?: number;
+  gap?: number;
 }
 
 export interface Run {
@@ -128,6 +130,15 @@ export interface Finding {
   /** The first failing seed's checked values, so a list can show the damage. */
   expected: unknown;
   actual: unknown;
+  /** Summed over the failing seeds: journeys that broke of those checked, and how far they missed. */
+  harm: Harm | null;
+}
+
+export interface Harm {
+  failed: number;
+  samples: number;
+  seeds: number;
+  gap: number | null;
 }
 
 export interface RecordingStep {

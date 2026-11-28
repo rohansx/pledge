@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { checkRows, impact, title, plain, pledgeCount, plural, runState, satisfies, seconds, seedsCount, show, verdictSentence, when } from "./format.ts";
+import { checkRows, harmFigures, impact, title, plain, pledgeCount, plural, runState, satisfies, seconds, seedsCount, show, verdictSentence, when } from "./format.ts";
 
 test("impact lists only the missed values of the first failing seed", () => {
   const seeds = [
@@ -95,4 +95,13 @@ test("plain drops markdown emphasis and code marks but keeps the words", () => {
 test("a pledge key reads as a short title", () => {
   assert.equal(title("psp-never-asked-to-charge-a-transaction-twice"), "PSP never asked to charge a transaction twice");
   assert.equal(title("one_order_per_checkout"), "One order per checkout");
+});
+
+test("harm shows journeys broken and the summed gap, worded for money", () => {
+  assert.deepEqual(harmFigures({ failed: 79, samples: 100, seeds: 5, gap: 5481.5 }, "money"), [
+    { value: "79 of 100", label: "journeys broke it, over 5 runs" },
+    { value: "5,481.50", label: "of money charged wrongly, in the app's currency" },
+  ]);
+  assert.deepEqual(harmFigures({ failed: 1, samples: 20, seeds: 1, gap: null }, "duplicate"), [{ value: "1 of 20", label: "journeys broke it, over 1 run" }]);
+  assert.deepEqual(harmFigures(null, "money"), []);
 });

@@ -6,7 +6,7 @@ import { useState } from "react";
 import { Button, Card, CopyCommand, Empty, ErrorNote, ExpectedActual, FindingStatusBadge, Loading, PageTitle, PledgeStatusBadge, RunStrip, Seeds, SeverityBadge } from "../components/ui.tsx";
 import { BrowserRecording } from "../components/browser-recording.tsx";
 import { Recording } from "../components/recording.tsx";
-import { fieldName, impact, title, when } from "../format.ts";
+import { fieldName, harmFigures, impact, title, when } from "../format.ts";
 import { findingQuery, findingsQuery, useSetFindingStatus } from "../queries.ts";
 import type { FindingDetail } from "../types.ts";
 import { FindingRow } from "./overview.tsx";
@@ -115,10 +115,22 @@ function Rail({ finding }: { finding: FindingDetail }) {
 /** The damage in the app's own numbers, large, before any table. */
 function Impact({ finding }: { finding: FindingDetail }) {
   const rows = impact(finding.seeds);
-  if (rows.length === 0) return null;
+  const figures = harmFigures(finding.harm, finding.severity);
+  if (rows.length === 0 && figures.length === 0) return null;
   const seed = finding.seeds.find((candidate) => candidate.status === "fail" && candidate.actual !== undefined);
   return (
-    <Card tone="seal" title="What went wrong" description={`Read from the app's own data after seed ${seed?.seed} finished`}>
+    <Card tone="seal" title="What went wrong" description={figures.length > 0 ? "Counted from every journey the check read, on every run that broke it" : `Read from the app's own data after seed ${seed?.seed} finished`}>
+      {figures.length > 0 ? (
+        <div className="grid grid-cols-1 gap-px border-t border-seal/20 bg-seal/15 sm:grid-cols-2">
+          {figures.map((figure) => (
+            <div key={figure.label} className="bg-card px-5 py-5">
+              <p className="text-4xl font-semibold tracking-[-.03em] text-seal tabular-nums">{figure.value}</p>
+              <p className="mt-1 text-[13px] text-ink-2">{figure.label}</p>
+            </div>
+          ))}
+        </div>
+      ) : null}
+      {rows.length > 0 ? <p className="border-t border-seal/20 px-5 pt-3 text-xs text-mute">{figures.length > 0 ? `One broken journey, seed ${seed?.seed}:` : null}</p> : null}
       <div className="grid grid-cols-1 gap-px border-t border-seal/20 bg-seal/15 sm:grid-cols-2">
         {rows.slice(0, 4).map((row) => (
           <div key={row.key} className="bg-card px-5 py-4">

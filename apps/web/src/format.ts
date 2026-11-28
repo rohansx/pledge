@@ -111,6 +111,17 @@ export function impact(seeds: { status: string; expected?: unknown; actual?: unk
   return seed ? checkRows(seed.expected, seed.actual).filter((row) => row.differs) : [];
 }
 
+/** A finding's damage as two headline figures: how many journeys broke, and how far they missed in total. */
+export function harmFigures(harm: { failed: number; samples: number; seeds: number; gap: number | null } | null, severity: string): { value: string; label: string }[] {
+  if (!harm) return [];
+  const figures = [{ value: `${thousands(harm.failed)} of ${thousands(harm.samples)}`, label: `journeys broke it, over ${plural(harm.seeds, "run")}` }];
+  if (harm.gap) {
+    const amount = harm.gap.toLocaleString("en-US", { maximumFractionDigits: 2, minimumFractionDigits: Number.isInteger(harm.gap) ? 0 : 2 });
+    figures.push({ value: amount, label: severity === "money" ? "of money charged wrongly, in the app's currency" : "off from what each journey expected, summed" });
+  }
+  return figures;
+}
+
 export type RunState = "running" | "stalled" | "failed" | "kept" | "broken" | "inconclusive";
 export const STALLED_AFTER_MS = 3 * 60 * 60 * 1000; // ponytail: runs have no heartbeat; one unfinished after 3 h is treated as dead
 

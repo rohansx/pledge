@@ -560,10 +560,24 @@ def severity(key: str, statement: str) -> str:
     return "money" if MONEY.search(text) else "duplicate" if DUPLICATE.search(text) else "data"
 
 
-def _first_broken(store: Store, finding: dict) -> dict:
-    """The first failing seed of the run that last broke this finding's pledge: where its numbers come from."""
+def _broken_seeds(store: Store, finding: dict) -> list[dict]:
+    """The failing seeds of the run that last broke this finding's pledge: where its numbers come from."""
     result = next((item for item in _run(store, finding["run_id"])["results"] if item["pledge_id"] == finding["pledge_id"]), {"seeds": []})
-    return next((seed for seed in result["seeds"] if seed["status"] == "fail"), {})
+    return [seed for seed in result["seeds"] if seed["status"] == "fail"]
+
+
+def harm(seeds: list[dict]) -> dict | None:
+    """How much broke, summed over the failing seeds: journeys that failed of those checked, and how far they
+    missed in the app's own unit (money over-captured, rows duplicated). None for a run published before seeds
+    carried counts, or a whole-run check that has no journeys."""
+    counted = [seed for seed in seeds if seed.get("failed") and seed.get("samples")]
+    if not counted:
+        return None
+    gaps = [seed.get("gap") for seed in counted]
+    return {
+        "failed": sum(seed["failed"] for seed in counted), "samples": sum(seed["samples"] for seed in counted), "seeds": len(counted),
+        "gap": round(sum(gaps), 2) if None not in gaps else None,
+    }
 
 
 def _run(store: Store, run_id: str) -> dict:
@@ -573,7 +587,8 @@ def _run(store: Store, run_id: str) -> dict:
 
 def finding_row(store: Store, finding: dict, pledges: dict[str, dict]) -> dict:
     pledge = pledges.get(finding["pledge_id"], {})
-    broken = _first_broken(store, finding)
+    seeds = _broken_seeds(store, finding)
+    broken = seeds[0] if seeds else {}
     return {
         "id": finding["id"], "repoId": finding["repo_id"], "pledgeId": finding["pledge_id"], "pledgeKey": pledge.get("key"),
         "pledgeStatus": pledge.get("status"), "statement": finding["statement"], "status": finding["status"], "runId": finding["run_id"],
@@ -581,7 +596,7 @@ def finding_row(store: Store, finding: dict, pledges: dict[str, dict]) -> dict:
         "firstSeen": finding["created_at"], "updatedAt": finding["updated_at"],
         "severity": severity(pledge.get("key") or "", finding["statement"]),
         "reach": pledge.get("reach", "unknown"), "trigger": pledge.get("trigger", ""),
-        "expected": broken.get("expected"), "actual": broken.get("actual"),
+        "expected": broken.get("expected"), "actual": broken.get("actual"), "harm": harm(seeds),
     }
 
 
