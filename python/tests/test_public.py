@@ -2,7 +2,7 @@
 
 from fastapi.testclient import TestClient
 
-from tests.test_api import AUTH, client, pledge, scan  # noqa: F401 - client is a fixture
+from test_api import AUTH, client, pledge, scan  # noqa: F401 - client is a fixture
 
 STEPS = [
     {"at": 0, "actor": "fault", "text": "POST /payments?reset_token=abc123&email=a@b.c: reply lost", "detail": {"request": '{"card":"4242"}', "reply": '{"token":"secret"}'}},
