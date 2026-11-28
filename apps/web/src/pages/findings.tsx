@@ -6,6 +6,7 @@ import { useState } from "react";
 import { Button, Card, CopyCommand, Empty, ErrorNote, ExpectedActual, FindingStatusBadge, Loading, PageTitle, PledgeStatusBadge, RunStrip, Seeds, SeverityBadge } from "../components/ui.tsx";
 import { BrowserRecording } from "../components/browser-recording.tsx";
 import { Recording } from "../components/recording.tsx";
+import { ReportCard } from "./share.tsx";
 import { fieldName, harmFigures, impact, title, when } from "../format.ts";
 import { findingQuery, findingsQuery, useSetFindingStatus } from "../queries.ts";
 import type { FindingDetail } from "../types.ts";
@@ -197,6 +198,8 @@ export function FindingPage() {
               </ul>
             </div>
           </Card>
+
+          <ReportCard key={finding.id} finding={finding} />
 
           <Card title="History">
             <ol className="border-t border-line px-5 py-2">

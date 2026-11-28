@@ -149,3 +149,40 @@ export function title(key: string): string {
   const text = words(key).split(" ").map((word) => (ACRONYMS.has(word.toLowerCase()) ? word.toUpperCase() : word)).join(" ");
   return text.charAt(0).toUpperCase() + text.slice(1);
 }
+
+const MAX_ISSUE_URL = 7500; // GitHub refuses longer new-issue links; the body is cut to fit and points at the public page
+
+interface Reportable {
+  statement: string;
+  severity: string;
+  harm: { failed: number; samples: number; seeds: number; gap: number | null } | null;
+  cause: string;
+  fix: string;
+  faults?: string | null;
+}
+
+/** The report a maintainer reads: what breaks, how often, why, and what would stop it. Markdown for GitHub. */
+export function reportMarkdown(finding: Reportable, publicUrl: string | null): string {
+  const [journeys, gap] = harmFigures(finding.harm, finding.severity);
+  const often = journeys ? `It broke for ${journeys.value} journeys over ${plural(finding.harm!.seeds, "run")}${gap ? `, ${gap.value} ${gap.label}` : ""}.` : "";
+  return [
+    `### What happens`, ``, `This should always hold, and does not: ${finding.statement}`, ...(often ? [``, often] : []),
+    ...(finding.faults ? [``, `Conditions: ${finding.faults}`] : []),
+    ``, `### Why`, ``, finding.cause,
+    ...(finding.fix ? [``, `### Expected`, ``, finding.fix] : []),
+    ...(publicUrl ? [``, `Full evidence, with the request-by-request recording of one broken journey: ${publicUrl}`] : []),
+  ].join("\n");
+}
+
+/** GitHub's new-issue form, filled in. A person still presses Submit. */
+export function newIssueUrl(repo: string, title: string, body: string): string {
+  const base = `https://github.com/${repo}/issues/new?title=${encodeURIComponent(title)}&body=`;
+  let text = body;
+  while (base.length + encodeURIComponent(text).length > MAX_ISSUE_URL) text = `${text.slice(0, Math.floor(text.length * 0.9))}\n\n[cut to fit: see the link above]`;
+  return base + encodeURIComponent(text);
+}
+
+/** Money and data go private when the repo asks for that, and when its policy could not be read: failing closed. */
+export function reportsPrivately(severity: string, securityPolicy: boolean | null): boolean {
+  return securityPolicy !== false && (severity === "money" || severity === "data");
+}

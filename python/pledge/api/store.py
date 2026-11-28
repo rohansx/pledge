@@ -13,7 +13,7 @@ import threading
 from datetime import UTC, datetime
 from typing import Protocol
 
-KINDS = ("repo", "run", "pledge", "finding", "job")
+KINDS = ("repo", "run", "pledge", "finding", "job", "share")
 MAX_CLAIMS = 2  # a job whose worker died is handed out once more, then left for `logic.fail_stale_jobs`
 
 

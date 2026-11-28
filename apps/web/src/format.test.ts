@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { checkRows, harmFigures, impact, title, plain, pledgeCount, plural, runState, satisfies, seconds, seedsCount, show, verdictSentence, when } from "./format.ts";
+import { checkRows, harmFigures, impact, newIssueUrl, reportMarkdown, reportsPrivately, title, plain, pledgeCount, plural, runState, satisfies, seconds, seedsCount, show, verdictSentence, when } from "./format.ts";
 
 test("impact lists only the missed values of the first failing seed", () => {
   const seeds = [
@@ -104,4 +104,27 @@ test("harm shows journeys broken and the summed gap, worded for money", () => {
   ]);
   assert.deepEqual(harmFigures({ failed: 1, samples: 20, seeds: 1, gap: null }, "duplicate"), [{ value: "1 of 20", label: "journeys broke it, over 1 run" }]);
   assert.deepEqual(harmFigures(null, "money"), []);
+});
+
+test("a report says what breaks, how often, why and the fix, and links the public page", () => {
+  const text = reportMarkdown({ statement: "Charged once.", severity: "money", harm: { failed: 58, samples: 100, seeds: 5, gap: 2753.26 }, cause: "No row lock.", fix: "Lock it.", faults: "Two calls at once." }, "https://app.example/p/t");
+  assert.match(text, /does not: Charged once\./);
+  assert.match(text, /58 of 100 journeys over 5 runs, 2,753\.26 of money charged wrongly/);
+  assert.match(text, /### Why\n\nNo row lock\.\n\n### Expected\n\nLock it\./);
+  assert.match(text, /https:\/\/app\.example\/p\/t$/);
+  assert.doesNotMatch(reportMarkdown({ statement: "x", severity: "data", harm: null, cause: "c", fix: "" }, null), /Expected|evidence/);
+});
+
+test("a new-issue link is filled in and cut to fit GitHub's limit", () => {
+  assert.equal(newIssueUrl("a/b", "T t", "x&y"), "https://github.com/a/b/issues/new?title=T%20t&body=x%26y");
+  const long = newIssueUrl("a/b", "t", "é".repeat(5000));
+  assert.ok(long.length <= 7500 && long.includes(encodeURIComponent("[cut to fit")));
+});
+
+test("money and data go privately only where the repo asks for it", () => {
+  assert.equal(reportsPrivately("money", true), true);
+  assert.equal(reportsPrivately("duplicate", true), false);
+  assert.equal(reportsPrivately("money", false), false);
+  assert.equal(reportsPrivately("data", null), true); // GitHub did not answer: private
+  assert.equal(reportsPrivately("duplicate", null), false);
 });

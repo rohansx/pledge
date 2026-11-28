@@ -132,6 +132,44 @@ export interface Finding {
   actual: unknown;
   /** Summed over the failing seeds: journeys that broke of those checked, and how far they missed. */
   harm: Harm | null;
+  /** The write-up: why it happens and what would stop it. Required, with `confirmed`, before it can be public. */
+  cause: string;
+  fix: string;
+  confirmed: boolean;
+  /** Set while the finding has a public page at /p/<token>. */
+  shareToken: string | null;
+  /** owner/name on GitHub, where it is reported. */
+  upstreamRepo: string | null;
+  issueUrl: string | null;
+}
+
+export interface PublicFinding {
+  repo: string;
+  upstreamRepo: string | null;
+  title: string | null;
+  statement: string;
+  severity: Severity;
+  reach: string;
+  trigger: string;
+  status: FindingStatus;
+  firstSeen: string;
+  harm: Harm | null;
+  expected: unknown;
+  actual: unknown;
+  cause: string;
+  fix: string;
+  issueUrl: string | null;
+  seeds: { seed: number; status: SeedStatus }[];
+  faults: string | null;
+  timeline: { at: number; actor: RecordingStep["actor"]; text: string }[];
+  held: { kept: number; checked: number };
+}
+
+export interface PublicGroup {
+  repo: string;
+  upstreamRepo: string | null;
+  held: { kept: number; checked: number };
+  findings: ({ token: string } & Pick<PublicFinding, "title" | "statement" | "severity" | "status" | "harm" | "issueUrl">)[];
 }
 
 export interface Harm {

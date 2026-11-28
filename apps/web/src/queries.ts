@@ -1,7 +1,7 @@
 import { queryOptions, useMutation, useQueryClient } from "@tanstack/react-query";
 
 import { api } from "./api.ts";
-import type { Finding, FindingDetail, FindingStatus, Me, Overview, Pledge, PledgeDetail, Repo, Run, RunDetail } from "./types.ts";
+import type { Finding, FindingDetail, FindingStatus, Me, Overview, Pledge, PledgeDetail, PublicFinding, PublicGroup, Repo, Run, RunDetail } from "./types.ts";
 
 // One query per API call. Keys start with the object kind so a mutation can invalidate everything derived from it.
 export const meQuery = () => queryOptions({ queryKey: ["me"], queryFn: () => api<Me>("/me") });
@@ -13,6 +13,8 @@ export const pledgesQuery = (repoId: string, status?: string) => queryOptions({ 
 export const pledgeQuery = (id: string) => queryOptions({ queryKey: ["pledge", id], queryFn: () => api<PledgeDetail>(`/pledges/${encodeURIComponent(id)}`) });
 export const runsQuery = (repoId: string) => queryOptions({ queryKey: ["repo", repoId, "runs"], queryFn: () => api<Run[]>(`/repos/${repoId}/runs`) });
 export const runQuery = (id: string) => queryOptions({ queryKey: ["run", id], queryFn: () => api<RunDetail>(`/runs/${id}`) });
+export const publicFindingQuery = (token: string) => queryOptions({ queryKey: ["public", token], queryFn: () => api<PublicFinding>(`/public/findings/${encodeURIComponent(token)}`) });
+export const publicIndexQuery = () => queryOptions({ queryKey: ["public"], queryFn: () => api<PublicGroup[]>("/public/findings") });
 export const commentQuery = (id: string) => queryOptions({ queryKey: ["run", id, "comment"], queryFn: () => api<{ markdown: string }>(`/runs/${id}/comment`) });
 
 /** After a decision, everything about the repo may read differently: verdicts depend on which pledges are approved. */
@@ -29,5 +31,26 @@ export function useSetFindingStatus(repoId: string, findingId: string) {
   return useMutation({
     mutationFn: (status: Extract<FindingStatus, "open" | "fix_proposed" | "fixed_unverified">) => api<FindingDetail>(`/findings/${findingId}`, { method: "PATCH", body: { status } }),
     onSuccess: () => Promise.all([client.invalidateQueries({ queryKey: ["repo", repoId] }), client.invalidateQueries({ queryKey: ["finding", findingId] }), client.invalidateQueries({ queryKey: ["repos"] })]),
+  });
+}
+
+export interface FindingPatch {
+  cause?: string;
+  fix?: string;
+  confirmed?: boolean;
+  public?: boolean;
+  upstream_repo?: string;
+  issue_url?: string;
+}
+
+/** The write-up, the confirmation, the public page and the upstream link: everything about reporting a finding. */
+export function usePatchFinding(repoId: string, findingId: string) {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (body: FindingPatch) => api<FindingDetail>(`/findings/${findingId}`, { method: "PATCH", body }),
+    onSuccess: (finding) => {
+      client.setQueryData(["finding", findingId], finding);
+      return Promise.all([client.invalidateQueries({ queryKey: ["repo", repoId] }), client.invalidateQueries({ queryKey: ["public"] })]);
+    },
   });
 }

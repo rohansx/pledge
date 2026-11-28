@@ -19,10 +19,11 @@ that changes here corrects every run already published.
 from __future__ import annotations
 
 import re
+import secrets
 import uuid
 from datetime import UTC, datetime, timedelta
 
-from pledge.api.models import EventIn, FindingPatch, GitHubRepo, InstallationEvent, PledgePatch, PullRequestEvent, RunResultIn, RunStartIn
+from pledge.api.models import GITHUB_REPO, EventIn, FindingPatch, GitHubRepo, InstallationEvent, PledgePatch, PullRequestEvent, RunResultIn, RunStartIn
 from pledge.api.store import MAX_CLAIMS, Store, now
 
 SEP = "~"
@@ -176,15 +177,36 @@ def _update_finding(store: Store, run: dict, result: dict, plans: dict[str, dict
 def patch_finding(store: Store, finding_id: str, patch: FindingPatch) -> dict:
     stored = _need(store, "finding", finding_id)
     finding = _current(stored, _plans(_runs(store, stored["repo_id"])))
-    if finding is None:
-        raise Refused("no run shows this pledge broken any more: the check never read its value, so there is nothing to fix")
-    if finding["status"] == "verified":
-        raise Refused("a verified finding changes only when a later run breaks the pledge again")
-    if finding["status"] != patch.status:
+    if patch.status is not None:
+        if finding is None:
+            raise Refused("no run shows this pledge broken any more: the check never read its value, so there is nothing to fix")
+        if finding["status"] == "verified":
+            raise Refused("a verified finding changes only when a later run breaks the pledge again")
+    finding = dict(finding or stored)
+    moved = patch.status is not None and finding["status"] != patch.status
+    if moved:
         finding["status"] = patch.status
-        finding["updated_at"] = now()
-        finding["history"] = [*finding["history"], {"at": finding["updated_at"], "status": patch.status, "run_id": None}]
+        finding["history"] = [*finding["history"], {"at": now(), "status": patch.status, "run_id": None}]
+    writeup = {**(finding.get("writeup") or {}), **{key: value.strip() for key, value in (("cause", patch.cause), ("fix", patch.fix)) if value is not None}}
+    upstream = {**(finding.get("upstream") or {}), **{key: value for key, value in (("repo", patch.upstream_repo), ("issue", patch.issue_url)) if value is not None}}
+    # A confirmation is of one run's evidence: a later run that breaks it again brings evidence nobody has checked.
+    confirmed_run = finding.get("confirmed_run") if patch.confirmed is None else (finding["run_id"] if patch.confirmed else None)
+    confirmed = confirmed_run is not None and confirmed_run == finding["run_id"]
+    share = finding.get("share")
+    if patch.public is True and not share:
+        if not confirmed:
+            raise Refused("a person has to confirm the finding against its evidence before it can be public")
+        if not writeup.get("cause"):
+            raise Refused("write down why it happens before making it public: a public page without a cause reads as a guess")
+        share = secrets.token_urlsafe(18)
+    if patch.public is False or not confirmed or not writeup.get("cause"):
+        share = None  # never public unconfirmed or unexplained: withdrawing either withdraws the page
+    changed = {"writeup": writeup, "upstream": upstream, "confirmed_run": confirmed_run, "share": share}
+    if moved or any(finding.get(key) != value for key, value in changed.items()):
+        finding = {**finding, **changed, "updated_at": now()}
         store.put("finding", finding)
+        if share and share != stored.get("share"):
+            store.put("share", {"id": share, "finding_id": finding["id"], "created_at": now()})
     return finding_view(store, finding)
 
 
@@ -597,6 +619,10 @@ def finding_row(store: Store, finding: dict, pledges: dict[str, dict]) -> dict:
         "severity": severity(pledge.get("key") or "", finding["statement"]),
         "reach": pledge.get("reach", "unknown"), "trigger": pledge.get("trigger", ""),
         "expected": broken.get("expected"), "actual": broken.get("actual"), "harm": harm(seeds),
+        "cause": (finding.get("writeup") or {}).get("cause", ""), "fix": (finding.get("writeup") or {}).get("fix", ""),
+        "confirmed": _confirmed(finding), "shareToken": finding.get("share") if _confirmed(finding) else None,
+        "upstreamRepo": (finding.get("upstream") or {}).get("repo") or _github_name(store, finding["repo_id"]),
+        "issueUrl": (finding.get("upstream") or {}).get("issue") or None,
     }
 
 
@@ -711,3 +737,66 @@ def pr_comment(store: Store, run: dict, base_url: str) -> str:
         lines += ["", "**For review** (not approved, so these do not fail the check)", *map(line, review)]
     lines += ["", f"Kept: {kept}. Skipped (not touched by this change): 0."]
     return "\n".join(lines)
+
+
+def _confirmed(finding: dict) -> bool:
+    """Confirmed for the evidence it shows now: the run a person checked is still the one that last broke it."""
+    return finding.get("confirmed_run") is not None and finding.get("confirmed_run") == finding["run_id"]
+
+
+def _github_name(store: Store, repo_id: str) -> str | None:
+    repo = store.get("repo", repo_id) or {}
+    name = (repo.get("github") or {}).get("full_name") or repo.get("name", "")
+    return name if re.fullmatch(GITHUB_REPO, name) else None
+
+
+def _shared(store: Store, token: str) -> dict:
+    share = store.get("share", token)
+    stored = store.get("finding", share["finding_id"]) if share else None
+    if not stored or stored.get("share") != token:  # a link that was switched off stays dead, even if switched on again
+        raise NotFound(token)
+    finding = _current(stored, _plans(_runs(store, stored["repo_id"]))) or stored
+    if not _confirmed(finding) or not (finding.get("writeup") or {}).get("cause"):
+        raise NotFound(token)  # a newer run brought evidence nobody has confirmed: offline until someone does
+    return finding
+
+
+def _held(store: Store, repo_id: str) -> dict:
+    """How the repo's pledges stood on their last runs: the ones that held matter as much as the one that broke."""
+    rows = pledge_list(store, repo_id)
+    return {"kept": sum(row["lastVerdict"] == "kept" for row in rows), "checked": sum(row["lastVerdict"] is not None for row in rows)}
+
+
+QUERY = re.compile(r"(/[^\s?]*)\?[^\s:]*")  # a query string in a request path can carry a token or an email
+
+
+def public_finding(store: Store, token: str) -> dict:
+    """What anyone holding the link sees. Request and reply bodies are left out: they can carry tokens, emails and
+    passwords from the app's test data. So are the browser recording and anything about how to run Pledge."""
+    view = finding_view(store, _shared(store, token))
+    repo = store.get("repo", view["repoId"]) or {}
+    return {
+        "repo": repo.get("name", view["repoId"]), "upstreamRepo": view["upstreamRepo"], "title": view["pledgeKey"], "statement": view["statement"],
+        "severity": view["severity"], "reach": view["reach"], "trigger": view["trigger"], "status": view["status"], "firstSeen": view["firstSeen"],
+        "harm": view["harm"], "expected": view["expected"], "actual": view["actual"], "cause": view["cause"], "fix": view["fix"], "issueUrl": view["issueUrl"],
+        "seeds": [{"seed": seed["seed"], "status": seed["status"]} for seed in view["seeds"]],
+        "faults": (view["faultPlan"] or {}).get("description"),
+        "timeline": [{"at": step["at"], "actor": step["actor"], "text": QUERY.sub(r"\1", step["text"])} for step in view["timeline"]],
+        "held": _held(store, view["repoId"]),
+    }
+
+
+def public_index(store: Store) -> list[dict]:
+    """Every public finding, grouped by repo, with how that repo's other pledges held."""
+    shown: dict[str, dict] = {}
+    for share in store.list("share"):
+        finding = store.get("finding", share["finding_id"])
+        if not finding or finding.get("share") != share["id"]:
+            continue
+        try:
+            page = public_finding(store, share["id"])
+        except NotFound:
+            continue
+        group = shown.setdefault(finding["repo_id"], {"repo": page["repo"], "upstreamRepo": page["upstreamRepo"], "held": page["held"], "findings": []})
+        group["findings"].append({"token": share["id"], **{key: page[key] for key in ("title", "statement", "severity", "status", "harm", "issueUrl")}})
+    return list(shown.values())

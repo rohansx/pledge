@@ -148,8 +148,20 @@ class EventIn(Strict):
     payload: dict[str, Any] = Field(default_factory=dict)
 
 
+GITHUB_REPO = r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$"
+UPSTREAM_LINK = r"^(|https://github\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+/(issues|discussions|security/advisories)/[A-Za-z0-9-]+)$"
+
+
 class FindingPatch(Strict):
-    status: Literal["open", "fix_proposed", "fixed_unverified"]  # "verified" and "reopened" are set by reruns only
+    """Any one of these may come alone. Status is set by people; "verified" and "reopened" by reruns only."""
+
+    status: Literal["open", "fix_proposed", "fixed_unverified"] | None = None
+    cause: str | None = Field(default=None, max_length=4000)  # the write-up: why it happens, in the app's code
+    fix: str | None = Field(default=None, max_length=4000)  # and what would stop it
+    confirmed: bool | None = None  # a person checked the evidence; required before the finding can be public
+    public: bool | None = None  # on: a read-only page at an unguessable link; off: that link stops working
+    upstream_repo: str | None = Field(default=None, max_length=200, pattern=GITHUB_REPO)  # owner/name on GitHub
+    issue_url: str | None = Field(default=None, max_length=300, pattern=UPSTREAM_LINK)  # "" clears it
 
 
 class PledgePatch(Strict):

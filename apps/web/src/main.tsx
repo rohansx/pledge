@@ -13,17 +13,21 @@ import { CoveragePage, SettingsPage } from "./pages/misc.tsx";
 import { OverviewPage } from "./pages/overview.tsx";
 import { PledgePage, PledgesPage } from "./pages/pledges.tsx";
 import { RunPage, RunsPage } from "./pages/runs.tsx";
+import { PublicFindingPage, PublicIndexPage } from "./pages/share.tsx";
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { staleTime: 15_000, retry: (count, error) => !(error instanceof Unauthorized) && count < 2 } },
 });
+
+/** Pages anyone may open: a finding someone chose to share, and the list of them. */
+const isPublic = (path: string): boolean => path.startsWith("/p/") || path === "/found";
 
 /** Leaves for the sign-in page whenever the session ends, wherever that happens. */
 function Root() {
   const signedIn = useSignedIn();
   const navigate = useNavigate();
   useEffect(() => {
-    if (!signedIn && location.pathname !== "/login") {
+    if (!signedIn && location.pathname !== "/login" && !isPublic(location.pathname)) {
       queryClient.clear();
       void navigate({ to: "/login" });
     }
@@ -42,6 +46,8 @@ const repo = createRoute({ getParentRoute: () => root, path: "/r/$repoId", compo
 const routeTree = root.addChildren([
   createRoute({ getParentRoute: () => root, path: "/", beforeLoad: () => { throw redirect({ to: getToken() ? "/repos" : "/login" }); } }),
   createRoute({ getParentRoute: () => root, path: "/login", component: LoginPage }),
+  createRoute({ getParentRoute: () => root, path: "/p/$token", component: PublicFindingPage }),
+  createRoute({ getParentRoute: () => root, path: "/found", component: PublicIndexPage }),
   createRoute({ getParentRoute: () => root, path: "/repos", component: ReposPage, beforeLoad: requireSession }),
   repo.addChildren([
     createRoute({ getParentRoute: () => repo, path: "/", beforeLoad: ({ params }) => { throw redirect({ to: "/r/$repoId/overview", params }); } }),

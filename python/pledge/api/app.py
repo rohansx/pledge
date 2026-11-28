@@ -130,6 +130,19 @@ def create_app(store: Store, token: str | None, version: str = "dev", public_url
         handled = await anyio.to_thread.run_sync(handle, store, event)
         return Response(status_code=204) if handled is None else ok(handled, 202)
 
+    # Read-only pages a person chose to make public; no sign-in. Short caching: switching one off takes a minute.
+    public = {"cache-control": "public, max-age=60"}
+
+    @app.get("/api/public/findings")
+    def public_findings() -> JSONResponse:
+        return JSONResponse({"success": True, "data": logic.public_index(store), "error": None}, headers=public)
+
+    @app.get("/api/public/findings/{token}")
+    def public_finding(token: str) -> JSONResponse:
+        if len(token) > 64:
+            raise logic.NotFound(token)
+        return JSONResponse({"success": True, "data": logic.public_finding(store, token), "error": None}, headers=public)
+
     @api.get("/repos/{repo_id}/jobs")
     def jobs(repo_id: str) -> JSONResponse:
         """Pull request scans: waiting, running and finished."""
